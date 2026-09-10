@@ -316,6 +316,14 @@ def load_master():
     components = pd.read_excel(MASTER_FILE, sheet_name="Components")
     accessories = pd.read_excel(MASTER_FILE, sheet_name="Accessories")
     pdus = pd.read_excel(MASTER_FILE, sheet_name="PDUs")
+
+    # Fill merged TYPE cells downward
+    # Example:
+    # BASIC -> BASIC -> BASIC -> BASIC
+    # METERED -> METERED -> ...
+    # SWITCHED -> SWITCHED -> ...
+    pdus["Type"] = pdus["Type"].ffill()
+
     return configs, components, accessories, pdus
 
 configs_df, components_df, accessories_df, pdus_df = load_master()
