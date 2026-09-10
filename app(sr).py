@@ -120,10 +120,46 @@ def init_tracking_db():
             total_price REAL
         )
     """)
+        # --------------------------------------------------------
+    # Persistent Excel download counter
+    # --------------------------------------------------------
+    cursor.execute("""
+        CREATE TABLE IF NOT EXISTS download_counter (
+            id INTEGER PRIMARY KEY,
+            download_count INTEGER NOT NULL DEFAULT 0
+        )
+    """)
+
+    cursor.execute("""
+        INSERT OR IGNORE INTO download_counter (id, download_count)
+        VALUES (1, 0)
+    """)
+
+    conn.commit()
+    conn.close()
+    
+def increment_download_count():
+    conn = sqlite3.connect(TRACKING_DB)
+    cursor = conn.cursor()
+
+    cursor.execute("""
+        UPDATE download_counter
+        SET download_count = download_count + 1
+        WHERE id = 1
+    """)
+
+    cursor.execute("""
+        SELECT download_count
+        FROM download_counter
+        WHERE id = 1
+    """)
+
+    count = cursor.fetchone()[0]
 
     conn.commit()
     conn.close()
 
+    return count
 
 def generate_configuration_id():
     """
@@ -348,6 +384,8 @@ defaults = {
     "warranty_pct": 0.0,
     "configuration_id": None,
     "configuration_saved": False,
+    "user_code": "—",
+    "user_count": 0,
 
 }
 for key, value in defaults.items():
@@ -355,6 +393,22 @@ for key, value in defaults.items():
         st.session_state[key] = value
 if st.session_state.configuration_id is None:
     st.session_state.configuration_id = generate_configuration_id()
+    
+# Load persistent Excel download count
+if st.session_state.user_count == 0:
+    conn = sqlite3.connect(TRACKING_DB)
+    cursor = conn.cursor()
+
+    cursor.execute("""
+        SELECT download_count
+        FROM download_counter
+        WHERE id = 1
+    """)
+
+    result = cursor.fetchone()
+    st.session_state.user_count = result[0] if result else 0
+
+    conn.close()
 
 def money(value):
     return f"₹ {value:,.2f}"
@@ -382,6 +436,101 @@ def internal_password():
         return st.secrets["MDC_INTERNAL_PASSWORD"]
     except Exception:
         return DEMO_INTERNAL_PASSWORD
+def generate_user_code():
+    codes = []
+
+    # --------------------------------------------------------
+    # MDC CONFIGURATION
+    # --------------------------------------------------------
+    config_text = str(st.session_state.configuration)
+
+    if config_text:
+        config_number = config_text.split()[-1]
+        codes.append(f"C{config_number}")
+
+    # --------------------------------------------------------
+    # FIRE SUPPRESSION
+    # --------------------------------------------------------
+    fire_code = None
+
+    for part in FIRE_SUPPRESSION_PARTS:
+        if st.session_state.accessory_qty.get(part, 0) > 0:
+
+            description = ""
+
+            if part in optional_lookup:
+                description = str(
+                    optional_lookup[part]["Description"]
+                ).upper()
+
+            if "EXTERNAL" in description:
+                fire_code = "F-EXT"
+
+            elif "INTERNAL" in description:
+                fire_code = "F-INT"
+
+    if fire_code:
+        codes.append(fire_code)
+
+    # --------------------------------------------------------
+    # CAMERA
+    # --------------------------------------------------------
+    if any(
+        st.session_state.accessory_qty.get(part, 0) > 0
+        for part in CAMERA_PARTS
+    ):
+        codes.append("CAM")
+
+    # --------------------------------------------------------
+    # OTHER ACCESSORIES
+    # --------------------------------------------------------
+    accessory_code_map = {
+        "801223664": "KT",    # Rotating Keyboard Tray
+        "801075237": "CM",    # Cable Manager
+        "801029022": "TCT",   # Top Cable Tray
+        "801075235": "BP",    # Brush Panel
+    }
+
+    for part, code in accessory_code_map.items():
+        if st.session_state.accessory_qty.get(part, 0) > 0:
+            codes.append(code)
+
+    # --------------------------------------------------------
+    # PDU
+    # --------------------------------------------------------
+    for part, qty in st.session_state.pdu_qty.items():
+
+        if qty <= 0:
+            continue
+
+        pdu_rows = pdus_df[
+            pdus_df["Part Code"].astype(str).str.strip() == str(part).strip()
+        ]
+
+        if not pdu_rows.empty:
+
+            pdu_type = str(
+                pdu_rows.iloc[0]["Type"]
+            ).strip().upper()
+
+            pdu_code_map = {
+                "BASIC": "B-PDU",
+                "METERED": "M-PDU",
+                "SWITCHED": "S-PDU",
+            }
+
+            if pdu_type in pdu_code_map:
+                codes.append(pdu_code_map[pdu_type])
+
+        break
+
+    return "-".join(codes)
+def handle_excel_download():
+    # Generate user code based on current selections
+    st.session_state.user_code = generate_user_code()
+
+    # Increment persistent download count
+    st.session_state.user_count = increment_download_count()
 
 def selected_config_record():
     match = configs_df[
@@ -607,33 +756,81 @@ st.html("""
 </div>
 """)
 # ============================================================
-# CONFIGURATION TRACKING ID
+# USER CODE / USER COUNT / DATE
 # ============================================================
+
+current_date = datetime.now().strftime("%d-%m-%Y")
 
 st.html(f"""
 <div style="
     background-color:#F7FBFF;
     border:1px solid #B8D8F5;
-    border-left:6px solid #005EB8;
     border-radius:8px;
-    padding:12px 18px;
+    padding:14px 18px;
     margin:0 0 20px 0;
 ">
 
     <div style="
-        font-size:13px;
-        color:#64748B;
-        margin-bottom:4px;
+        display:flex;
+        justify-content:space-between;
+        text-align:center;
+        gap:20px;
     ">
-        Configuration ID
-    </div>
 
-    <div style="
-        font-size:20px;
-        font-weight:700;
-        color:#003B71;
-    ">
-        {st.session_state.configuration_id}
+        <div style="flex:1;">
+            <div style="
+                font-size:13px;
+                color:#64748B;
+                margin-bottom:5px;
+            ">
+                USER CODE
+            </div>
+
+            <div style="
+                font-size:20px;
+                font-weight:700;
+                color:#003B71;
+            ">
+                {st.session_state.user_code}
+            </div>
+        </div>
+
+        <div style="flex:1;">
+            <div style="
+                font-size:13px;
+                color:#64748B;
+                margin-bottom:5px;
+            ">
+                USER COUNT
+            </div>
+
+            <div style="
+                font-size:20px;
+                font-weight:700;
+                color:#003B71;
+            ">
+                {st.session_state.user_count}
+            </div>
+        </div>
+
+        <div style="flex:1;">
+            <div style="
+                font-size:13px;
+                color:#64748B;
+                margin-bottom:5px;
+            ">
+                DATE
+            </div>
+
+            <div style="
+                font-size:20px;
+                font-weight:700;
+                color:#003B71;
+            ">
+                {current_date}
+            </div>
+        </div>
+
     </div>
 
 </div>
