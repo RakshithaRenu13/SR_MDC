@@ -1432,7 +1432,7 @@ st.html("""
     font-size: 18px;
     font-weight: 700;
 ">
-    5. FINAL STRUCTURE
+    5. FINAL BOQ
 </div>
 """)
 
@@ -1440,8 +1440,20 @@ bom = build_bom()
 
 if not bom.empty:
 
+    # Calculate selling prices for Final BOQ
+    base_cost, optional_cost, pdu_cost, total_cost = cost_summary(bom)
+
+    bom_with_price, _, _ = add_selling_prices(
+        bom,
+        total_cost,
+        st.session_state.margin_pct,
+        st.session_state.freight,
+        st.session_state.installation
+    )
+
     structure = bom[
-        ["S.No.", "Part Code", "Description", "Quantity", "UOM"]
+        ["S.No.", "Part Code", "Description", "Quantity", "UOM", "Unit Price",
+        "Total Price"]
     ].copy()
 
     # ========================================================
@@ -1489,6 +1501,20 @@ if not bom.empty:
         component_type = str(
             bom.loc[row.name, "Component Type"]
         ).strip()
+        unit_price = row["Unit Price"]
+        total_price = row["Total Price"]
+
+        unit_price_display = (
+            money(float(unit_price))
+            if pd.notna(unit_price)
+            else "N/A"
+        )
+
+        total_price_display = (
+            money(float(total_price))
+            if pd.notna(total_price)
+            else "N/A"
+        )
 
         # ----------------------------------------------------
         # MAIN MDC TITLE
@@ -1684,6 +1710,17 @@ if not bom.empty:
         width: 10%;
         text-align: center !important;
     }
+    .unit-price {
+        width: 12%;
+        text-align: right !important;
+        white-space: nowrap;
+    }
+
+    .total-price {
+        width: 13%;
+        text-align: right !important;
+        white-space: nowrap;
+    }
 
     </style>
 
@@ -1696,6 +1733,8 @@ if not bom.empty:
                 <th class="description">Description</th>
                 <th class="quantity">Qty</th>
                 <th class="uom">UOM</th>
+                <th class="unit-price">Unit Price</th>
+                <th class="total-price">Total Price</th>
             </tr>
         </thead>
 
@@ -1737,7 +1776,7 @@ if not bom.empty:
 
             html += f"""
             <tr class="main-mdc-row">
-                <td colspan="5">
+                <td colspan="7">
                     {description}
                 </td>
             </tr>
@@ -1824,6 +1863,8 @@ if not bom.empty:
             <td class="description">{description}</td>
             <td class="quantity">{quantity}</td>
             <td class="uom">{uom}</td>
+            <td class="unit-price">{unit_price_display}</td>
+            <td class="total-price">{total_price_display}</td>
         </tr>
         """
 
@@ -1910,35 +1951,35 @@ if is_internal:
 # ------------------------------------------------------------
 # 8 Final BOM
 # ------------------------------------------------------------
-st.header("8. Final BOM")
+# st.header("8. Final BOM")
 
-if not bom.empty:
-    bom_with_price, margin_price, final_selling_price = add_selling_prices(
-        bom, total_cost, margin_pct, freight, installation
-    )
+# if not bom.empty:
+#     bom_with_price, margin_price, final_selling_price = add_selling_prices(
+#         bom, total_cost, margin_pct, freight, installation
+#     )
 
-    display = bom_with_price[[
-        "S.No.", "Component Type", "Part Code", "Description", "Quantity",
-        "UOM", "Unit Price", "Total Price"
-    ]].copy()
+#     display = bom_with_price[[
+#         "S.No.", "Component Type", "Part Code", "Description", "Quantity",
+#         "UOM", "Unit Price", "Total Price"
+#     ]].copy()
 
-    display["Unit Price"] = display["Unit Price"].apply(
-        lambda x: money(float(x)) if pd.notna(x) else "N/A"
-    )
-    display["Total Price"] = display["Total Price"].apply(
-        lambda x: money(float(x)) if pd.notna(x) else "N/A"
-    )
+#     display["Unit Price"] = display["Unit Price"].apply(
+#         lambda x: money(float(x)) if pd.notna(x) else "N/A"
+#     )
+#     display["Total Price"] = display["Total Price"].apply(
+#         lambda x: money(float(x)) if pd.notna(x) else "N/A"
+#     )
 
-    st.dataframe(display, use_container_width=True, hide_index=True)
+#     st.dataframe(display, use_container_width=True, hide_index=True)
 
-    known = bom_with_price["Total Price"].dropna().sum()
-    price_box("BOM Selling Value", float(known))
+#     known = bom_with_price["Total Price"].dropna().sum()
+#     price_box("BOM Selling Value", float(known))
 
-    if not is_internal:
-        st.caption("Sales view contains selling prices only. Internal unit cost and total cost are not displayed.")
-else:
-    bom_with_price = bom
-    st.info("No BOM available.")
+#     if not is_internal:
+#         st.caption("Sales view contains selling prices only. Internal unit cost and total cost are not displayed.")
+# else:
+#     bom_with_price = bom
+#     st.info("No BOM available.")
 
 # ------------------------------------------------------------
 # 9 Excel
