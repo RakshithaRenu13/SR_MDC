@@ -1155,35 +1155,37 @@ for _, r in accessories_df.iterrows():
 
 st.subheader("3.1 Fire Suppression")
 
-fire_options = {
-    "None": None,
-    "External": "801073203",
-    "Internal": "HRD-XH1C",
-}
+col1, col2, col3 = st.columns([3, 1.5, 1.5])
 
-current_fire = "None"
+with col1:
+    st.write("Fire Suppression")
 
-if st.session_state.accessory_qty.get("801073203", 0) > 0:
-    current_fire = "External"
-elif st.session_state.accessory_qty.get("HRD-XH1C", 0) > 0:
-    current_fire = "Internal"
+with col2:
+    external_selected = st.checkbox(
+        "External",
+        value=st.session_state.accessory_qty.get("801073203", 0) > 0,
+        key="fire_external"
+    )
 
-fire_selection = st.selectbox(
-    "Fire Suppression",
-    list(fire_options.keys()),
-    index=list(fire_options.keys()).index(current_fire),
-    key="fire_suppression_selection"
-)
+with col3:
+    internal_selected = st.checkbox(
+        "Internal",
+        value=st.session_state.accessory_qty.get("HRD-XH1C", 0) > 0,
+        key="fire_internal"
+    )
 
-# Remove both fire suppression types first
-for part in FIRE_SUPPRESSION_PARTS:
-    st.session_state.accessory_qty.pop(part, None)
+# Only one Fire Suppression type can be selected
+if external_selected and not internal_selected:
+    st.session_state.accessory_qty["801073203"] = 1
+    st.session_state.accessory_qty.pop("HRD-XH1C", None)
 
-# Add only the selected type
-selected_fire_part = fire_options[fire_selection]
+elif internal_selected and not external_selected:
+    st.session_state.accessory_qty["HRD-XH1C"] = 1
+    st.session_state.accessory_qty.pop("801073203", None)
 
-if selected_fire_part:
-    st.session_state.accessory_qty[selected_fire_part] = 1
+else:
+    st.session_state.accessory_qty.pop("801073203", None)
+    st.session_state.accessory_qty.pop("HRD-XH1C", None)
 
 # # ============================================================
 # # CAMERA SYSTEM
@@ -1254,30 +1256,44 @@ if selected_fire_part:
 
 st.subheader("3.2 Camera")
 
-camera_options = ["No", "Yes"]
+col1, col2, col3 = st.columns([3, 1.5, 1.5])
 
-camera_current = "Yes" if any(
-    st.session_state.accessory_qty.get(part, 0) > 0
-    for part in CAMERA_PARTS
-) else "No"
+with col1:
+    st.write("Camera")
 
-camera_selection = st.selectbox(
-    "Camera",
-    camera_options,
-    index=camera_options.index(camera_current),
-    key="camera_system_selection"
-)
+with col2:
+    camera_yes = st.checkbox(
+        "Yes",
+        value=any(
+            st.session_state.accessory_qty.get(part, 0) > 0
+            for part in CAMERA_PARTS
+        ),
+        key="camera_yes"
+    )
 
-camera_selected = camera_selection == "Yes"
+with col3:
+    camera_no = st.checkbox(
+        "No",
+        value=not any(
+            st.session_state.accessory_qty.get(part, 0) > 0
+            for part in CAMERA_PARTS
+        ),
+        key="camera_no"
+    )
 
-if camera_selected:
+# Only one Camera option can be selected
+if camera_yes and not camera_no:
     for part in CAMERA_PARTS:
         if part in optional_lookup:
             st.session_state.accessory_qty[part] = 1
-else:
+
+elif camera_no and not camera_yes:
     for part in CAMERA_PARTS:
         st.session_state.accessory_qty.pop(part, None)
 
+else:
+    for part in CAMERA_PARTS:
+        st.session_state.accessory_qty.pop(part, None)
 
 # ============================================================
 # OTHER OPTIONAL ACCESSORIES
