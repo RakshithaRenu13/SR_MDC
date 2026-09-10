@@ -798,9 +798,21 @@ if cfg is not None:
 #         else:
 #             st.session_state.accessory_qty.pop(part, None)
 # ------------------------------------------------------------
-# 4 PDU selection
+# 3 PDU selection
 # ------------------------------------------------------------
-st.header("3. PDU Selection")
+st.html("""
+<div style="
+    background: linear-gradient(135deg, #005EB8, #003B71);
+    color: white;
+    padding: 10px 16px;
+    border-radius: 8px;
+    margin: 20px 0 15px 0;
+    font-size: 18px;
+    font-weight: 700;
+">
+    3. PDU SELECTION
+</div>
+""")
 
 pdu_options = [
     f'{r["Part Code"]} — {r["Description"]}'
