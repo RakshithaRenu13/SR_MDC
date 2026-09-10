@@ -1886,10 +1886,51 @@ if not bom.empty:
     # ========================================================
 
     st.html(html)
+    # ------------------------------------------------------------
+# FINAL SELLING PRICE
+# ------------------------------------------------------------
+
+st.markdown(
+    f"""
+    <div style="
+        display:flex;
+        justify-content:flex-end;
+        margin-top:15px;
+    ">
+        <div style="
+            background-color:#F7FBFF;
+            border:1px solid #B8D8F5;
+            border-radius:8px;
+            padding:12px 22px;
+            min-width:280px;
+            text-align:right;
+        ">
+            <div style="
+                font-size:13px;
+                color:#64748B;
+                font-weight:600;
+                margin-bottom:4px;
+            ">
+                FINAL SELLING PRICE
+            </div>
+
+            <div style="
+                font-size:22px;
+                color:#003B71;
+                font-weight:700;
+            ">
+                {money(float(bom_with_price["Total Price"].fillna(0).sum()))}
+            </div>
+        </div>
+    </div>
+    """,
+    unsafe_allow_html=True
+)
 
 else:
 
     st.info("No components selected.")
+    
 
 # ------------------------------------------------------------
 # Cost + selling price - internal only
