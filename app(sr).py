@@ -931,7 +931,32 @@ available = configs_df[
 
 labels = available["Configuration"].tolist()
 
+# if labels:
+#     st.session_state.configuration = st.selectbox(
+#         "Select Configuration",
+#         labels,
+#         index=(
+#             labels.index(st.session_state.configuration)
+#             if st.session_state.configuration in labels
+#             else 0
+#         ),
+#     )
 if labels:
+
+    configuration_display_names = {
+        "Configuration 1":
+            "Configuration 1 - 1SR, 42U×800W×1200D, 3.5KW, W/O Dehumidifier",
+
+        "Configuration 2":
+            "Configuration 2 - 1SR, 42U×800W×1200D, 7KW, Dehumidifier",
+
+        "Configuration 3":
+            "Configuration 3 - 1SR, 42U×800W×1200D, 7KW, W/O Dehumidifier",
+
+        "Configuration 4":
+            "Configuration 4 - 1SR, 42U×800W×1200D, 7KW, Dehumidifier",
+    }
+
     st.session_state.configuration = st.selectbox(
         "Select Configuration",
         labels,
@@ -940,33 +965,34 @@ if labels:
             if st.session_state.configuration in labels
             else 0
         ),
+        format_func=lambda x: configuration_display_names.get(x, x),
     )
 
 # ------------------------------------------------------------
 # Selected Configuration Display
 # ------------------------------------------------------------
 
-cfg = selected_config_record()
+# cfg = selected_config_record()
 
-if cfg is not None:
-    st.markdown(
-        f"""
-        <div style="
-            background-color: #005EB8;
-            color: white;
-            padding: 15px 20px;
-            border-radius: 10px;
-            font-size: 18px;
-            font-weight: 600;
-            margin-top: 10px;
-            margin-bottom: 10px;
-        ">
-            Selected Configuration:
-            {cfg["Configuration"]} — {cfg["Configuration Title"]}
-        </div>
-        """,
-        unsafe_allow_html=True
-    )
+# if cfg is not None:
+#     st.markdown(
+#         f"""
+#         <div style="
+#             background-color: #005EB8;
+#             color: white;
+#             padding: 15px 20px;
+#             border-radius: 10px;
+#             font-size: 18px;
+#             font-weight: 600;
+#             margin-top: 10px;
+#             margin-bottom: 10px;
+#         ">
+#             Selected Configuration:
+#             {cfg["Configuration"]} — {cfg["Configuration Title"]}
+#         </div>
+#         """,
+#         unsafe_allow_html=True
+#     )
 
 # ------------------------------------------------------------
 # 3 Optional accessories
