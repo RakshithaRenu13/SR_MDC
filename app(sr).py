@@ -3403,10 +3403,11 @@ if not bom_with_price.empty:
         unsafe_allow_html=True
     )
 
-    st.html(
+    st.markdown(
         final_boq_html(
             bom_with_price
-        )
+        ),
+        unsafe_allow_html=True
     )
 
 else:
