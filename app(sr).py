@@ -1,4 +1,4 @@
-```python
+
 import os
 import sqlite3
 from io import BytesIO
