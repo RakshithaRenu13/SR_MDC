@@ -1577,43 +1577,25 @@ st.markdown(
 download_count = get_download_count()
 next_code = current_user_code()
 current_date = datetime.now().strftime("%d-%m-%Y")
+access_type = "Internal" if is_internal else "Sales"
 
-st.markdown(
-    f"""
-    <div style="
-        display: grid;
-        grid-template-columns: 1.45fr 1fr 1fr 1fr;
-        gap: 10px;
-        margin-bottom: 8px;
-        width: 100%;
-    ">
+m1, m2, m3, m4 = st.columns([1.45, 1, 1, 1])
 
-        <div class="meta-card">
-            <div class="meta-label">User Code</div>
-            <div class="meta-value">{next_code}</div>
-        </div>
+with m1:
+    st.markdown("**User Code**")
+    st.markdown(f"`{next_code}`")
 
-        <div class="meta-card">
-            <div class="meta-label">User Count</div>
-            <div class="meta-value">{download_count}</div>
-        </div>
+with m2:
+    st.markdown("**User Count**")
+    st.markdown(f"`{download_count}`")
 
-        <div class="meta-card">
-            <div class="meta-label">Date</div>
-            <div class="meta-value">{current_date}</div>
-        </div>
+with m3:
+    st.markdown("**Date**")
+    st.markdown(f"`{current_date}`")
 
-        <div class="meta-card">
-            <div class="meta-label">Access</div>
-            <div class="meta-value">
-                {"Internal" if is_internal else "Sales"}
-            </div>
-        </div>
-
-    </div>
-    """,
-    unsafe_allow_html=True,
-)
+with m4:
+    st.markdown("**Access**")
+    st.markdown(f"`{access_type}`")
 # ============================================================
 # CUSTOMER DETAILS
 # NOT NUMBERED - COMPACT TOP AREA
