@@ -1157,44 +1157,40 @@ for _, r in accessories_df.iterrows():
 # FIRE SUPPRESSION
 # ============================================================
 
-st.subheader("🔥 Fire Suppression")
+st.subheader("Fire Suppression")
 
-st.caption(
-    "Select the required Fire Suppression system. "
-    "Brush Panel 1 U will be added automatically."
+fire_options = {
+    "None": None,
+    "External": "801073203",
+    "Internal": "HRD-XH1C",
+}
+
+current_fire = "None"
+
+if st.session_state.accessory_qty.get("801073203", 0) > 0:
+    current_fire = "External"
+elif st.session_state.accessory_qty.get("HRD-XH1C", 0) > 0:
+    current_fire = "Internal"
+
+fire_selection = st.selectbox(
+    "Fire Suppression",
+    list(fire_options.keys()),
+    index=list(fire_options.keys()).index(current_fire),
+    key="fire_suppression_selection"
 )
+
+# Remove both fire suppression types first
+for part in FIRE_SUPPRESSION_PARTS:
+    st.session_state.accessory_qty.pop(part, None)
 
 fire_selected = False
 
-for part in FIRE_SUPPRESSION_PARTS:
+# Add only the selected type
+selected_fire_part = fire_options[fire_selection]
 
-    if part not in optional_lookup:
-        continue
-
-    r = optional_lookup[part]
-
-    selected = st.checkbox(
-        f'{part} — {r["Description"]}',
-        value=(
-            st.session_state.accessory_qty.get(part, 0) > 0
-        ),
-        key=f"fire_{part}"
-    )
-
-    if selected:
-
-        # Add selected Fire Suppression item
-        st.session_state.accessory_qty[part] = 1
-
-        fire_selected = True
-
-    else:
-
-        st.session_state.accessory_qty.pop(
-            part,
-            None
-        )
-
+if selected_fire_part:
+    st.session_state.accessory_qty[selected_fire_part] = 1
+    fire_selected = True
 
 # ------------------------------------------------------------
 # AUTOMATIC FIRE SUPPRESSION SUPPORT
