@@ -1994,6 +1994,7 @@ if not bom.empty:
                 file_name="MDC_Internal_Cost.xlsx",
                 mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
                 use_container_width=True,
+                on_click=handle_excel_download,
             )
         with col2:
             st.download_button(
@@ -2002,6 +2003,7 @@ if not bom.empty:
                 file_name="MDC_Sales_Output.xlsx",
                 mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
                 use_container_width=True,
+                on_click=handle_excel_download,
             )
     else:
         st.download_button(
@@ -2010,6 +2012,7 @@ if not bom.empty:
             file_name="MDC_Sales_Output.xlsx",
             mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
             use_container_width=True,
+            on_click=handle_excel_download,
         )
         
 # ============================================================
