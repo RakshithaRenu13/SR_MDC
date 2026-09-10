@@ -797,8 +797,49 @@ if cfg is not None:
 #             st.session_state.accessory_qty[part] = qty
 #         else:
 #             st.session_state.accessory_qty.pop(part, None)
+# ------------------------------------------------------------
+# 4 PDU selection
+# ------------------------------------------------------------
+st.header("3. PDU Selection")
+
+pdu_options = [
+    f'{r["Part Code"]} — {r["Description"]}'
+    for _, r in pdus_df.iterrows()
+]
+
+col1, col2 = st.columns([5, 1.5])
+
+with col1:
+    selected_pdu = st.selectbox(
+        "Select PDU",
+        ["None"] + pdu_options,
+        index=0
+    )
+
+with col2:
+    qty = st.number_input(
+        "Quantity",
+        min_value=1,
+        max_value=999,
+        value=1,
+        step=1,
+        key="pdu_quantity"
+    )
+
+# Reset PDU quantity dictionary
+st.session_state.pdu_qty = {}
+
+if selected_pdu != "None":
+
+    selected_index = pdu_options.index(selected_pdu)
+    selected_row = pdus_df.iloc[selected_index]
+
+    part = str(selected_row["Part Code"])
+
+    st.session_state.pdu_qty[part] = qty
+
 # ============================================================
-# 3. OPTIONAL ACCESSORIES
+# 4. OPTIONAL ACCESSORIES
 # ============================================================
 
 st.header("3. Optional Accessories")
@@ -1039,46 +1080,46 @@ for part in OTHER_OPTIONAL_PARTS:
                 None
             )
 
-# ------------------------------------------------------------
-# 4 PDU selection
-# ------------------------------------------------------------
-st.header("4. PDU Selection")
+# # ------------------------------------------------------------
+# # 4 PDU selection
+# # ------------------------------------------------------------
+# st.header("4. PDU Selection")
 
-pdu_options = [
-    f'{r["Part Code"]} — {r["Description"]}'
-    for _, r in pdus_df.iterrows()
-]
+# pdu_options = [
+#     f'{r["Part Code"]} — {r["Description"]}'
+#     for _, r in pdus_df.iterrows()
+# ]
 
-col1, col2 = st.columns([5, 1.5])
+# col1, col2 = st.columns([5, 1.5])
 
-with col1:
-    selected_pdu = st.selectbox(
-        "Select PDU",
-        ["None"] + pdu_options,
-        index=0
-    )
+# with col1:
+#     selected_pdu = st.selectbox(
+#         "Select PDU",
+#         ["None"] + pdu_options,
+#         index=0
+#     )
 
-with col2:
-    qty = st.number_input(
-        "Quantity",
-        min_value=1,
-        max_value=999,
-        value=1,
-        step=1,
-        key="pdu_quantity"
-    )
+# with col2:
+#     qty = st.number_input(
+#         "Quantity",
+#         min_value=1,
+#         max_value=999,
+#         value=1,
+#         step=1,
+#         key="pdu_quantity"
+#     )
 
-# Reset PDU quantity dictionary
-st.session_state.pdu_qty = {}
+# # Reset PDU quantity dictionary
+# st.session_state.pdu_qty = {}
 
-if selected_pdu != "None":
+# if selected_pdu != "None":
 
-    selected_index = pdu_options.index(selected_pdu)
-    selected_row = pdus_df.iloc[selected_index]
+#     selected_index = pdu_options.index(selected_pdu)
+#     selected_row = pdus_df.iloc[selected_index]
 
-    part = str(selected_row["Part Code"])
+#     part = str(selected_row["Part Code"])
 
-    st.session_state.pdu_qty[part] = qty
+#     st.session_state.pdu_qty[part] = qty
 
 # ------------------------------------------------------------
 # 5 Final structure - common to both users
