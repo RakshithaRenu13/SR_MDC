@@ -1881,11 +1881,10 @@ if not bom.empty:
     </table>
     """
 
-    # ========================================================
-    # DISPLAY HTML TABLE
-    # ========================================================
+   st.html(html)
+else:
+st.info("no components needed")
 
-    st.html(html)
 # ------------------------------------------------------------
 # FINAL SELLING PRICE
 # ------------------------------------------------------------
@@ -1919,13 +1918,14 @@ st.markdown(
                 color:#003B71;
                 font-weight:700;
             ">
-                {money(float(bom_with_price["Total Price"].fillna(0).sum()))}
+                {money(float(final_selling_price))}
             </div>
         </div>
     </div>
     """,
     unsafe_allow_html=True
 )
+
 else:
 
     st.info("No components selected.")
