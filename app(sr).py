@@ -1278,15 +1278,16 @@ else:
 # OTHER OPTIONAL ACCESSORIES
 # ============================================================
 
-st.subheader("Other Optional Accessories")
+# st.subheader("Other Optional Accessories")
 
 OTHER_OPTIONAL_PARTS = [
-    "801223664",   # Rotating Keyboard tray
-    "801075237",   # 1 U Cable Manager Plastic
-    "801029022",   # MDC,42U TOP CABLE TRAY IT
+    ("801223664", "3.3 Rotating Keyboard Tray"),
+    ("801075237", "3.4 Cable Manager"),
+    ("801029022", "3.5 Top Cable Tray"),
+    ("801075235", "3.6 Brush Panel"),
 ]
 
-for part in OTHER_OPTIONAL_PARTS:
+for part, display_name in OTHER_OPTIONAL_PARTS:
 
     if part not in optional_lookup:
         continue
@@ -1301,7 +1302,7 @@ for part in OTHER_OPTIONAL_PARTS:
     with col1:
 
         selected = st.checkbox(
-            f'{part} — {r["Description"]}',
+            display_name,
             value=(
                 st.session_state.accessory_qty.get(
                     part, 0
