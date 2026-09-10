@@ -1126,10 +1126,6 @@ FIRE_SUPPRESSION_PARTS = [
     "HRD-XH1C",    # FIRE SUPPRESS, RACK MNT...
 ]
 
-FIRE_SUPPRESSION_SUPPORT = [
-    "801075235",   # BRUSH PANEL 1 U
-]
-
 CAMERA_PARTS = [
     "801303201",   # CAMERA, 4MP VANDAL
     "801303202",   # CAMERA, NVR 4 CHA INT
@@ -1191,34 +1187,6 @@ selected_fire_part = fire_options[fire_selection]
 if selected_fire_part:
     st.session_state.accessory_qty[selected_fire_part] = 1
     fire_selected = True
-
-# ------------------------------------------------------------
-# AUTOMATIC FIRE SUPPRESSION SUPPORT
-# ------------------------------------------------------------
-
-if fire_selected:
-
-    for part in FIRE_SUPPRESSION_SUPPORT:
-
-        if part in optional_lookup:
-
-            # Automatically add Brush Panel 1 U
-            st.session_state.accessory_qty[part] = 1
-
-    st.success(
-        "Fire Suppression selected → "
-        "Brush Panel 1 U automatically included."
-    )
-
-else:
-
-    # Remove Brush Panel if Fire Suppression is not selected
-    for part in FIRE_SUPPRESSION_SUPPORT:
-
-        st.session_state.accessory_qty.pop(
-            part,
-            None
-        )
 
 
 # ============================================================
