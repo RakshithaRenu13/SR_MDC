@@ -3738,4 +3738,3 @@ st.caption(
     "MDC Solution | Eaton MDC Solution Configurator | "
     f"Current Date: {datetime.now().strftime('%d-%m-%Y')}"
 )
-```
