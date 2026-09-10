@@ -2416,41 +2416,34 @@ def save_configuration(
 # HEADER
 # ============================================================
 
-st.markdown(
-    f"""
+st.html("""
+<div style="
+    background: linear-gradient(135deg, #005EB8, #003B71);
+    padding: 22px 30px;
+    border-radius: 10px;
+    margin-bottom: 25px;
+    box-shadow: 0 4px 12px rgba(0, 59, 113, 0.18);
+">
     <div style="
-        background:linear-gradient(
-            135deg,
-            {DARK_BLUE},
-            #003B5C
-        );
-        padding:17px 24px;
-        border-radius:8px;
-        margin-bottom:12px;
-        box-shadow:0 3px 10px rgba(0,80,128,0.15);
+        color: white;
+        font-size: 32px;
+        font-weight: 700;
+        letter-spacing: 0.3px;
+        line-height: 1.2;
     ">
-
-        <div style="
-            color:white;
-            font-size:27px;
-            font-weight:700;
-            line-height:1.2;
-        ">
-            Eaton MDC Solution Configurator
-        </div>
-
-        <div style="
-            color:#DDF2FF;
-            font-size:13px;
-            margin-top:4px;
-        ">
-            Modular Data Center Solution Configuration & Pricing
-        </div>
-
+        Eaton MDC Solution Configurator
     </div>
-    """,
-    unsafe_allow_html=True
-)
+
+    <div style="
+        color: #E6F2FF;
+        font-size: 16px;
+        font-weight: 400;
+        margin-top: 7px;
+    ">
+        Modular Data Center Solution Configuration &amp; Pricing
+    </div>
+</div>
+""")
 
 
 # ============================================================
