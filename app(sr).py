@@ -1445,7 +1445,7 @@ if not bom.empty:
     # --------------------------------------------------------
     base_cost, optional_cost, pdu_cost, total_cost = cost_summary(bom)
 
-    bom_with_price, _, _ = add_selling_prices(
+    bom_with_price, margin_price, final_selling_price= add_selling_prices(
         bom,
         total_cost,
         st.session_state.margin_pct,
