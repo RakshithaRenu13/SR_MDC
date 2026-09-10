@@ -673,10 +673,19 @@ is_internal = (
 # ------------------------------------------------------------
 # 1 Customer details
 # ------------------------------------------------------------
-st.markdown(
-    '<div class="section-box">1. CUSTOMER DETAILS</div>',
-    unsafe_allow_html=True
-)
+st.html("""
+<div style="
+    background: linear-gradient(135deg, #005EB8, #003B71);
+    color: white;
+    padding: 10px 16px;
+    border-radius: 8px;
+    margin: 20px 0 15px 0;
+    font-size: 18px;
+    font-weight: 700;
+">
+    1. CUSTOMER DETAILS
+</div>
+""")
 
 c1, c2 = st.columns(2)
 with c1:
@@ -699,7 +708,19 @@ st.session_state.solution = st.text_area(
 # 2. MDC Type & Configuration
 # ============================================================
 
-st.header("2. MDC Type & Configuration")
+st.html("""
+<div style="
+    background: linear-gradient(135deg, #005EB8, #003B71);
+    color: white;
+    padding: 10px 16px;
+    border-radius: 8px;
+    margin: 20px 0 15px 0;
+    font-size: 18px;
+    font-weight: 700;
+">
+    2. MDC TYPE & CONFIGURATION
+</div>
+""")
 
 mdc_type = st.radio(
     "MDC Type",
@@ -854,7 +875,19 @@ if selected_pdu != "None":
 # 4. OPTIONAL ACCESSORIES
 # ============================================================
 
-st.header("4. Optional Accessories")
+st.html("""
+<div style="
+    background: linear-gradient(135deg, #005EB8, #003B71);
+    color: white;
+    padding: 10px 16px;
+    border-radius: 8px;
+    margin: 20px 0 15px 0;
+    font-size: 18px;
+    font-weight: 700;
+">
+    4. OTHER ACCESSORIES
+</div>
+""")
 
 # ------------------------------------------------------------
 # PART CODES
@@ -1150,7 +1183,19 @@ for part in OTHER_OPTIONAL_PARTS:
 # ============================================================
 # 5. FINAL STRUCTURE
 # ============================================================
-st.header("5. Final Structure")
+st.html("""
+<div style="
+    background: linear-gradient(135deg, #005EB8, #003B71);
+    color: white;
+    padding: 10px 16px;
+    border-radius: 8px;
+    margin: 20px 0 15px 0;
+    font-size: 18px;
+    font-weight: 700;
+">
+    5. FINAL STRUCTURE
+</div>
+""")
 
 bom = build_bom()
 
