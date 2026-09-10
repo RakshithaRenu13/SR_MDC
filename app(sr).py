@@ -1,4 +1,3 @@
-
 import os
 import sqlite3
 from io import BytesIO
@@ -7,262 +6,77 @@ from datetime import datetime
 import pandas as pd
 import streamlit as st
 
-# PDF
-from reportlab.lib import colors
-from reportlab.lib.enums import TA_CENTER, TA_LEFT
-from reportlab.lib.pagesizes import A4, landscape
-from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
-from reportlab.lib.units import mm
-from reportlab.platypus import (
-    SimpleDocTemplate,
-    Table,
-    TableStyle,
-    Paragraph,
-    Spacer,
-)
-
-
 # ============================================================
-# MDC SOLUTION CONFIGURATOR
+# MDC SOLUTION - VERSION 1 (REAL SINGLE-RACK DATA)
+# Data source: MDC_Master_V1.xlsx (same folder as app.py)
+#
+# Single Rack:
+#   Configuration 1-4 = real data from supplied MDC BOQ
+#
+# Multirack:
+#   Configuration 1-9 = XXX placeholders for future update
 # ============================================================
 
 st.set_page_config(
     page_title="MDC Solution",
     page_icon="🏢",
     layout="wide",
+    # initial_sidebar_state="expanded",
 )
-
-
 # ============================================================
-# PROFESSIONAL THEME
+# EATON MDC HEADER
 # ============================================================
 
-PRIMARY_BLUE = "#007AC2"
-DARK_BLUE = "#005080"
-LIGHT_BLUE = "#DCEFF8"
-PALE_BLUE = "#F4FAFD"
-BORDER_BLUE = "#B8DDF0"
-TEXT_DARK = "#263238"
-TEXT_MUTED = "#64748B"
-WHITE = "#FFFFFF"
+# st.html("""
+# <div style="
+#     background: linear-gradient(135deg, #005EB8, #003B71);
+#     padding: 22px 30px;
+#     border-radius: 10px;
+#     margin-bottom: 25px;
+#     box-shadow: 0 4px 12px rgba(0, 59, 113, 0.18);
+# ">
+#     <div style="
+#         color: white;
+#         font-size: 32px;
+#         font-weight: 700;
+#         letter-spacing: 0.3px;
+#         line-height: 1.2;
+#     ">
+#         Eaton MDC Solution Configurator
+#     </div>
 
-
-st.markdown(
-    f"""
-    <style>
-
-    /* --------------------------------------------------------
-       GLOBAL
-       -------------------------------------------------------- */
-
-    .block-container {{
-        padding-top: 1rem;
-        padding-bottom: 2rem;
-        max-width: 1500px;
-    }}
-
-    html, body, [class*="css"] {{
-        font-family: Arial, sans-serif;
-    }}
-
-    /* Compact headings */
-
-    h1 {{
-        font-size: 26px !important;
-    }}
-
-    h2 {{
-        font-size: 21px !important;
-    }}
-
-    h3 {{
-        font-size: 17px !important;
-    }}
-
-    /* --------------------------------------------------------
-       STREAMLIT HEADERS
-       -------------------------------------------------------- */
-
-    div[data-testid="stHeadingWithActionElements"] {{
-        margin-top: 0.35rem;
-        margin-bottom: 0.45rem;
-    }}
-
-    /* --------------------------------------------------------
-       INPUTS
-       -------------------------------------------------------- */
-
-    div[data-baseweb="select"] > div {{
-        min-height: 38px;
-    }}
-
-    div[data-testid="stTextInput"] input,
-    div[data-testid="stNumberInput"] input {{
-        min-height: 36px;
-    }}
-
-    /* --------------------------------------------------------
-       BUTTON
-       -------------------------------------------------------- */
-
-    .stButton > button {{
-        border-radius: 6px;
-        border: 1px solid {PRIMARY_BLUE};
-        font-weight: 600;
-    }}
-
-    /* --------------------------------------------------------
-       SECTION RIBBON
-       -------------------------------------------------------- */
-
-    .section-ribbon {{
-        background: linear-gradient(
-            90deg,
-            {PRIMARY_BLUE},
-            #1593D0
-        );
-        color: white;
-        padding: 7px 13px;
-        border-radius: 6px;
-        font-size: 15px;
-        font-weight: 700;
-        margin-top: 12px;
-        margin-bottom: 9px;
-    }}
-
-    /* --------------------------------------------------------
-       SELECTION CARD
-       -------------------------------------------------------- */
-
-    .selection-card {{
-        background: {PALE_BLUE};
-        border: 1px solid {BORDER_BLUE};
-        border-left: 5px solid {PRIMARY_BLUE};
-        border-radius: 7px;
-        padding: 9px 13px;
-        margin: 7px 0 10px 0;
-    }}
-
-    .selection-label {{
-        font-size: 12px;
-        color: {TEXT_MUTED};
-        margin-bottom: 3px;
-    }}
-
-    .selection-value {{
-        font-size: 15px;
-        font-weight: 700;
-        color: {DARK_BLUE};
-    }}
-
-    /* --------------------------------------------------------
-       USER CODE
-       -------------------------------------------------------- */
-
-    .user-code-card {{
-        background: #F7FBFE;
-        border: 1px solid {BORDER_BLUE};
-        border-left: 5px solid {DARK_BLUE};
-        border-radius: 7px;
-        padding: 9px 14px;
-        margin-bottom: 10px;
-    }}
-
-    .user-code-label {{
-        font-size: 11px;
-        color: {TEXT_MUTED};
-        text-transform: uppercase;
-        letter-spacing: 0.4px;
-    }}
-
-    .user-code-value {{
-        font-size: 17px;
-        font-weight: 700;
-        color: {DARK_BLUE};
-        margin-top: 2px;
-    }}
-
-    /* --------------------------------------------------------
-       PRICE
-       -------------------------------------------------------- */
-
-    .price-card {{
-        background: white;
-        border: 1px solid {BORDER_BLUE};
-        border-radius: 7px;
-        padding: 10px 13px;
-        min-height: 65px;
-    }}
-
-    .price-label {{
-        font-size: 12px;
-        color: {TEXT_MUTED};
-    }}
-
-    .price-value {{
-        font-size: 19px;
-        font-weight: 700;
-        color: {DARK_BLUE};
-        margin-top: 4px;
-    }}
-
-    /* --------------------------------------------------------
-       DISABLED DOWNLOAD LOOK
-       -------------------------------------------------------- */
-
-    .download-note {{
-        background: #FFF8E8;
-        border: 1px solid #F2D58A;
-        border-radius: 6px;
-        padding: 8px 12px;
-        color: #765B00;
-        font-size: 13px;
-        margin-bottom: 8px;
-    }}
-
-    </style>
-    """,
-    unsafe_allow_html=True,
-)
-
-
-# ============================================================
-# FILE PATHS
-# ============================================================
+#     <div style="
+#         color: #E6F2FF;
+#         font-size: 16px;
+#         font-weight: 400;
+#         margin-top: 7px;
+#     ">
+#         Modular Data Center Solution Configuration &amp; Pricing
+#     </div>
+# </div>
+# """)
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
-
-MASTER_FILE = os.path.join(
-    BASE_DIR,
-    "MDC_Master_V1.xlsx"
-)
-
-TRACKING_DB = os.path.join(
-    BASE_DIR,
-    "MDC_Tracking.db"
-)
-
-DEMO_INTERNAL_PASSWORD = "MDC@123"
-
+MASTER_FILE = os.path.join(BASE_DIR, "MDC_Master_V1.xlsx")
+DEMO_INTERNAL_PASSWORD = "MDC@123"  # Change before production.
 
 # ============================================================
-# DATABASE
+# MDC CONFIGURATION TRACKING DATABASE
+# No login required
 # ============================================================
+
+TRACKING_DB = os.path.join(BASE_DIR, "MDC_Tracking.db")
+
 
 def init_tracking_db():
-
     conn = sqlite3.connect(TRACKING_DB)
 
     cursor = conn.cursor()
 
-    cursor.execute(
-        """
+    cursor.execute("""
         CREATE TABLE IF NOT EXISTS configurations (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
-
             configuration_id TEXT UNIQUE,
-            user_code TEXT,
-
             created_at TEXT,
 
             customer_name TEXT,
@@ -272,9 +86,6 @@ def init_tracking_db():
 
             mdc_type TEXT,
             configuration TEXT,
-
-            pdu_type TEXT,
-            pdu_part_code TEXT,
 
             base_cost REAL,
             optional_cost REAL,
@@ -290,14 +101,11 @@ def init_tracking_db():
             final_selling_price REAL,
             warranty_amount REAL
         )
-        """
-    )
+    """)
 
-    cursor.execute(
-        """
+    cursor.execute("""
         CREATE TABLE IF NOT EXISTS configuration_items (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
-
             configuration_id TEXT,
 
             component_type TEXT,
@@ -311,1890 +119,41 @@ def init_tracking_db():
             unit_price REAL,
             total_price REAL
         )
-        """
-    )
+    """)
 
     conn.commit()
     conn.close()
 
 
-init_tracking_db()
+def generate_configuration_id():
+    """
+    Generates IDs like:
 
+    MDC-20260907-0001
+    MDC-20260907-0002
+    MDC-20260907-0003
+    """
 
-# ============================================================
-# USER COUNT / USER CODE
-# ============================================================
-
-def get_next_user_number():
+    today = datetime.now().strftime("%Y%m%d")
 
     conn = sqlite3.connect(TRACKING_DB)
-
     cursor = conn.cursor()
 
-    cursor.execute(
-        """
+    cursor.execute("""
         SELECT COUNT(*)
         FROM configurations
-        """
-    )
+        WHERE configuration_id LIKE ?
+    """, (f"MDC-{today}-%",))
 
-    count = cursor.fetchone()[0]
+    count = cursor.fetchone()[0] + 1
 
     conn.close()
 
-    return count + 1
+    return f"MDC-{today}-{count:04d}"
 
-
-def generate_user_code():
-
-    now = datetime.now()
-
-    date_part = now.strftime("%Y%m%d")
-
-    user_number = get_next_user_number()
-
-    mdc_type_code = (
-        "SR"
-        if st.session_state.mdc_type == "Single Rack"
-        else "MR"
-    )
-
-    config_number = (
-        st.session_state.configuration
-        .replace("Configuration ", "C")
-        .replace(" ", "")
-    )
-
-    pdu_code = {
-        "Basic": "PB",
-        "Metered": "PM",
-        "Switched": "PS",
-        "None": "PN",
-    }.get(
-        st.session_state.pdu_type,
-        "PN"
-    )
-
-    fire_code = (
-        "FE"
-        if st.session_state.fire_suppression == "External"
-        else "FI"
-        if st.session_state.fire_suppression == "Internal"
-        else "FN"
-    )
-
-    camera_code = (
-        "CY"
-        if st.session_state.camera_enabled == "Yes"
-        else "CN"
-    )
-
-    return (
-        f"MDC-{date_part}-"
-        f"U{user_number:04d}-"
-        f"{mdc_type_code}-"
-        f"{config_number}-"
-        f"{pdu_code}-"
-        f"{fire_code}-"
-        f"{camera_code}"
-    )
-
-
-# ============================================================
-# MASTER DATA
-# ============================================================
-
-@st.cache_data
-def load_master():
-
-    configs = pd.read_excel(
-        MASTER_FILE,
-        sheet_name="Configurations"
-    )
-
-    components = pd.read_excel(
-        MASTER_FILE,
-        sheet_name="Components"
-    )
-
-    accessories = pd.read_excel(
-        MASTER_FILE,
-        sheet_name="Accessories"
-    )
-
-    pdus = pd.read_excel(
-        MASTER_FILE,
-        sheet_name="PDUs"
-    )
-
-    return (
-        configs,
-        components,
-        accessories,
-        pdus
-    )
-
-
-configs_df, components_df, accessories_df, pdus_df = load_master()
-
-
-# ============================================================
-# SESSION STATE
-# ============================================================
-
-defaults = {
-
-    "mode": "Sales",
-
-    "authenticated": False,
-
-    "customer_name": "",
-    "customer_place": "",
-    "problem": "",
-    "solution": "",
-
-    "mdc_type": "Single Rack",
-    "configuration": "Configuration 1",
-
-    "pdu_type": "None",
-    "selected_pdu_part": "",
-    "pdu_qty": {},
-
-    "fire_suppression": "None",
-    "camera_enabled": "No",
-
-    "accessory_qty": {},
-
-    "rotating_keyboard": False,
-    "cable_manager": False,
-    "top_cable_tray": False,
-    "brush_panel": False,
-
-    "margin_pct": 20.0,
-    "freight": 0.0,
-    "installation": 0.0,
-    "warranty_pct": 0.0,
-
-    "configuration_saved": False,
-}
-
-
-for key, value in defaults.items():
-
-    if key not in st.session_state:
-
-        st.session_state[key] = value
-
-
-# ============================================================
-# COMMON FUNCTIONS
-# ============================================================
-
-def money(value):
-
-    try:
-        return f"₹ {float(value):,.2f}"
-    except Exception:
-        return "₹ 0.00"
-
-
-def price_box(label, value):
-
-    st.markdown(
-        f"""
-        <div class="price-card">
-            <div class="price-label">
-                {label}
-            </div>
-            <div class="price-value">
-                {money(value)}
-            </div>
-        </div>
-        """,
-        unsafe_allow_html=True,
-    )
-
-
-def internal_password():
-
-    try:
-        return st.secrets["MDC_INTERNAL_PASSWORD"]
-
-    except Exception:
-
-        return DEMO_INTERNAL_PASSWORD
-
-
-def selected_config_record():
-
-    match = configs_df[
-        (configs_df["MDC Type"] == st.session_state.mdc_type)
-        &
-        (
-            configs_df["Configuration"]
-            == st.session_state.configuration
-        )
-    ]
-
-    return (
-        match.iloc[0]
-        if not match.empty
-        else None
-    )
-
-
-def selected_components():
-
-    return components_df[
-        (components_df["MDC Type"] == st.session_state.mdc_type)
-        &
-        (
-            components_df["Configuration"]
-            == st.session_state.configuration
-        )
-    ].copy()
-
-
-def get_accessory_row(part_code):
-
-    match = accessories_df[
-        accessories_df["Part Code"]
-        .astype(str)
-        .str.strip()
-        == str(part_code).strip()
-    ]
-
-    return (
-        match.iloc[0]
-        if not match.empty
-        else None
-    )
-
-
-# ============================================================
-# CONFIGURATION TITLES
-# ============================================================
-
-CONFIGURATION_DISPLAY_NAMES = {
-
-    "Configuration 1":
-        "1SR ,42U×800W×1200D, 3.5KW ,W/O Dehumidifier",
-
-    "Configuration 2":
-        "1SR ,42U×800W×1200D, 7KW, Dehumidifier",
-
-    "Configuration 3":
-        "1SR ,42U×800W×1200D, 7KW ,W/O Dehumidifier",
-
-    "Configuration 4":
-        "1SR ,42U×800W×1200D, 7KW, Dehumidifier",
-}
-
-
-def configuration_display_name(config):
-
-    return CONFIGURATION_DISPLAY_NAMES.get(
-        config,
-        config
-    )
-
-
-# ============================================================
-# PDU HELPERS
-# ============================================================
-
-def get_pdu_rows():
-
-    if st.session_state.pdu_type == "None":
-
-        return pdus_df.iloc[0:0].copy()
-
-    if "Type" not in pdus_df.columns:
-
-        return pdus_df.copy()
-
-    return pdus_df[
-        pdus_df["Type"]
-        .astype(str)
-        .str.strip()
-        .str.lower()
-        ==
-        st.session_state.pdu_type.lower()
-    ].copy()
-
-
-def reset_pdu():
-
-    st.session_state.selected_pdu_part = ""
-    st.session_state.pdu_qty = {}
-
-
-# ============================================================
-# ACCESSORY PART DEFINITIONS
-# ============================================================
-
-FIRE_SUPPRESSION_PARTS = {
-
-    "External": "801073203",
-
-    "Internal": "HRD-XH1C",
-}
-
-
-CAMERA_PARTS = [
-
-    "801303201",
-    "801303202",
-    "801303204",
-    "801303206",
-    "801303208",
-    "801303203",
-]
-
-
-OTHER_OPTIONAL_PARTS = {
-
-    "Rotating Keyboard":
-        "801223664",
-
-    "Cable Manager":
-        "801075237",
-
-    "Top Cable Tray":
-        "801029022",
-
-    "Brush Panel":
-        "801075235",
-}
-
-
-def add_accessory(part_code, qty=1):
-
-    row = get_accessory_row(part_code)
-
-    if row is not None:
-
-        st.session_state.accessory_qty[
-            str(part_code)
-        ] = qty
-
-
-def remove_accessory(part_code):
-
-    st.session_state.accessory_qty.pop(
-        str(part_code),
-        None
-    )
-
-
-# ============================================================
-# BUILD BOQ
-# ============================================================
-
-def build_bom():
-
-    rows = []
-
-    # --------------------------------------------------------
-    # BASE CONFIGURATION
-    # --------------------------------------------------------
-
-    for _, r in selected_components().iterrows():
-
-        cost = r["Unit Cost"]
-
-        try:
-            qty = float(r["Quantity"])
-        except Exception:
-            qty = 1
-
-        rows.append(
-            {
-                "S.No.": len(rows) + 1,
-
-                "Component Type":
-                    "Base (Configuration)",
-
-                "Part Code":
-                    (
-                        str(r["Part Code"])
-                        if pd.notna(r["Part Code"])
-                        else ""
-                    ),
-
-                "Description":
-                    str(r["Description"]),
-
-                "Quantity":
-                    qty,
-
-                "UOM":
-                    str(r["UOM"]),
-
-                "Unit Cost":
-                    cost,
-
-                "Total Cost":
-                    (
-                        float(cost) * qty
-                        if pd.notna(cost)
-                        else 0
-                    ),
-
-                "Source":
-                    "Configuration",
-            }
-        )
-
-
-    # --------------------------------------------------------
-    # FIRE SUPPRESSION
-    # --------------------------------------------------------
-
-    fire_selection = (
-        st.session_state.fire_suppression
-    )
-
-    if fire_selection in FIRE_SUPPRESSION_PARTS:
-
-        part = FIRE_SUPPRESSION_PARTS[
-            fire_selection
-        ]
-
-        row = get_accessory_row(part)
-
-        if row is not None:
-
-            cost = row["Unit Cost"]
-
-            rows.append(
-                {
-                    "S.No.": len(rows) + 1,
-                    "Component Type":
-                        "Optional Accessory",
-                    "Part Code":
-                        part,
-                    "Description":
-                        str(row["Description"]),
-                    "Quantity": 1,
-                    "UOM":
-                        str(row["UOM"]),
-                    "Unit Cost":
-                        cost,
-                    "Total Cost":
-                        (
-                            float(cost)
-                            if pd.notna(cost)
-                            else 0
-                        ),
-                    "Source":
-                        "Optional Accessory",
-                }
-            )
-
-
-    # --------------------------------------------------------
-    # CAMERA SYSTEM
-    # --------------------------------------------------------
-
-    if st.session_state.camera_enabled == "Yes":
-
-        for part in CAMERA_PARTS:
-
-            row = get_accessory_row(part)
-
-            if row is None:
-                continue
-
-            cost = row["Unit Cost"]
-
-            rows.append(
-                {
-                    "S.No.": len(rows) + 1,
-                    "Component Type":
-                        "Optional Accessory",
-                    "Part Code":
-                        part,
-                    "Description":
-                        str(row["Description"]),
-                    "Quantity": 1,
-                    "UOM":
-                        str(row["UOM"]),
-                    "Unit Cost":
-                        cost,
-                    "Total Cost":
-                        (
-                            float(cost)
-                            if pd.notna(cost)
-                            else 0
-                        ),
-                    "Source":
-                        "Optional Accessory",
-                }
-            )
-
-
-    # --------------------------------------------------------
-    # OTHER ACCESSORIES
-    # --------------------------------------------------------
-
-    for name, part in OTHER_OPTIONAL_PARTS.items():
-
-        if not st.session_state.accessory_qty.get(
-            part,
-            0
-        ):
-            continue
-
-        row = get_accessory_row(part)
-
-        if row is None:
-            continue
-
-        qty = float(
-            st.session_state.accessory_qty.get(
-                part,
-                1
-            )
-        )
-
-        cost = row["Unit Cost"]
-
-        rows.append(
-            {
-                "S.No.": len(rows) + 1,
-                "Component Type":
-                    "Optional Accessory",
-                "Part Code":
-                    part,
-                "Description":
-                    str(row["Description"]),
-                "Quantity":
-                    qty,
-                "UOM":
-                    str(row["UOM"]),
-                "Unit Cost":
-                    cost,
-                "Total Cost":
-                    (
-                        float(cost) * qty
-                        if pd.notna(cost)
-                        else 0
-                    ),
-                "Source":
-                    "Optional Accessory",
-            }
-        )
-
-
-    # --------------------------------------------------------
-    # PDU
-    # --------------------------------------------------------
-
-    if st.session_state.pdu_type != "None":
-
-        part = (
-            st.session_state.selected_pdu_part
-        )
-
-        row_match = pdus_df[
-            pdus_df["Part Code"]
-            .astype(str)
-            .str.strip()
-            == str(part).strip()
-        ]
-
-        if not row_match.empty:
-
-            r = row_match.iloc[0]
-
-            qty = float(
-                st.session_state.pdu_qty.get(
-                    part,
-                    1
-                )
-            )
-
-            cost = r["Unit Cost"]
-
-            description = str(
-                r["Description"]
-            )
-
-            extra = []
-
-            for col in ["Type", "C13", "C19"]:
-
-                if col in r.index:
-
-                    value = r[col]
-
-                    if pd.notna(value):
-
-                        extra.append(
-                            f"{col}: {value}"
-                        )
-
-            if extra:
-
-                description += (
-                    " | "
-                    + " | ".join(extra)
-                )
-
-            rows.append(
-                {
-                    "S.No.": len(rows) + 1,
-                    "Component Type": "PDU",
-                    "Part Code": str(part),
-                    "Description": description,
-                    "Quantity": qty,
-                    "UOM": str(r["UOM"]),
-                    "Unit Cost": cost,
-                    "Total Cost":
-                        (
-                            float(cost) * qty
-                            if pd.notna(cost)
-                            else 0
-                        ),
-                    "Source": "PDU",
-                }
-            )
-
-    return pd.DataFrame(rows)
-
-
-# ============================================================
-# COST SUMMARY
-# ============================================================
-
-def cost_summary(bom):
-
-    cfg = selected_config_record()
-
-    base_cost = 0.0
-
-    if cfg is not None:
-
-        if pd.notna(cfg["Base Cost"]):
-
-            base_cost = float(
-                cfg["Base Cost"]
-            )
-
-    optional_cost = 0.0
-    pdu_cost = 0.0
-
-    if not bom.empty:
-
-        optional_cost = float(
-            bom.loc[
-                bom["Source"]
-                == "Optional Accessory",
-                "Total Cost"
-            ]
-            .fillna(0)
-            .sum()
-        )
-
-        pdu_cost = float(
-            bom.loc[
-                bom["Source"] == "PDU",
-                "Total Cost"
-            ]
-            .fillna(0)
-            .sum()
-        )
-
-    total_cost = (
-        base_cost
-        + optional_cost
-        + pdu_cost
-    )
-
-    return (
-        base_cost,
-        optional_cost,
-        pdu_cost,
-        total_cost
-    )
-
-
-# ============================================================
-# SELLING PRICE
-# ============================================================
-
-def add_selling_prices(
-    bom,
-    total_cost,
-    margin_pct,
-    freight,
-    installation
-):
-
-    result = bom.copy()
-
-    margin_price = (
-        total_cost
-        / (1 - margin_pct / 100)
-        if margin_pct < 100
-        else 0
-    )
-
-    final_selling_price = (
-        margin_price
-        + freight
-        + installation
-    )
-
-    known_cost_total = (
-        result["Total Cost"]
-        .fillna(0)
-        .sum()
-        if not result.empty
-        else 0
-    )
-
-    if known_cost_total > 0:
-
-        result["Total Price"] = (
-            result["Total Cost"]
-            .fillna(0)
-            / known_cost_total
-            * final_selling_price
-        )
-
-        result["Unit Price"] = (
-            result["Total Price"]
-            / result["Quantity"]
-        )
-
-    else:
-
-        result["Total Price"] = pd.NA
-        result["Unit Price"] = pd.NA
-
-    return (
-        result,
-        margin_price,
-        final_selling_price
-    )
-
-
-# ============================================================
-# CUSTOMER / CONFIGURATION DATA
-# ============================================================
-
-def customer_table():
-
-    return pd.DataFrame(
-        [
-            [
-                "User Code",
-                st.session_state.user_code
-            ],
-            [
-                "Date",
-                datetime.now().strftime(
-                    "%d-%m-%Y"
-                )
-            ],
-            [
-                "Customer Name",
-                st.session_state.customer_name
-            ],
-            [
-                "Customer Place",
-                st.session_state.customer_place
-            ],
-            [
-                "Problem Description",
-                st.session_state.problem
-            ],
-            [
-                "Solution",
-                st.session_state.solution
-            ],
-            [
-                "MDC Type",
-                st.session_state.mdc_type
-            ],
-            [
-                "Configuration",
-                configuration_display_name(
-                    st.session_state.configuration
-                )
-            ],
-            [
-                "PDU Type",
-                st.session_state.pdu_type
-            ],
-        ],
-        columns=[
-            "Field",
-            "Value"
-        ]
-    )
-
-
-# ============================================================
-# FINAL BOQ SERIAL NUMBER
-# ============================================================
-
-def prepare_final_boq(bom):
-
-    if bom.empty:
-
-        return bom.copy()
-
-    structure = bom.copy()
-
-    main_mdc_part = "801029209"
-
-    selected_cfg_components = (
-        selected_components()
-    )
-
-    cooling_part_codes = set()
-
-    if not selected_cfg_components.empty:
-
-        # Retain existing logic:
-        # last three configuration components
-        cooling_rows = (
-            selected_cfg_components.tail(3)
-        )
-
-        cooling_part_codes = set(
-            cooling_rows["Part Code"]
-            .dropna()
-            .astype(str)
-            .str.strip()
-        )
-
-    new_serial = []
-
-    main_found = False
-
-    mdc_sub_no = 0
-    cooling_sub_no = 0
-    accessory_no = 3
-
-    cooling_started = False
-
-    for idx, row in structure.iterrows():
-
-        part_code = str(
-            row["Part Code"]
-        ).strip()
-
-        description = str(
-            row["Description"]
-        ).strip()
-
-        component_type = str(
-            row["Component Type"]
-        ).strip()
-
-        # ----------------------------------------------------
-        # MAIN MDC TITLE
-        # ----------------------------------------------------
-
-        if (
-            not main_found
-            and
-            "SINGLE RACK MDC"
-            in description.upper()
-        ):
-
-            new_serial.append("")
-
-            main_found = True
-
-            continue
-
-        # ----------------------------------------------------
-        # MAIN MDC
-        # ----------------------------------------------------
-
-        if part_code == main_mdc_part:
-
-            new_serial.append("1")
-
-            continue
-
-        # ----------------------------------------------------
-        # COOLING
-        # ----------------------------------------------------
-
-        if part_code in cooling_part_codes:
-
-            cooling_started = True
-
-            cooling_sub_no += 1
-
-            new_serial.append(
-                f"2.{cooling_sub_no}"
-            )
-
-            continue
-
-        # ----------------------------------------------------
-        # OPTIONAL
-        # ----------------------------------------------------
-
-        if component_type == "Optional Accessory":
-
-            new_serial.append(
-                str(accessory_no)
-            )
-
-            accessory_no += 1
-
-            continue
-
-        # ----------------------------------------------------
-        # PDU
-        # ----------------------------------------------------
-
-        if component_type == "PDU":
-
-            new_serial.append(
-                str(accessory_no)
-            )
-
-            accessory_no += 1
-
-            continue
-
-        # ----------------------------------------------------
-        # BASE MDC COMPONENTS
-        # ----------------------------------------------------
-
-        if not cooling_started:
-
-            mdc_sub_no += 1
-
-            new_serial.append(
-                f"1.{mdc_sub_no}"
-            )
-
-            continue
-
-        # ----------------------------------------------------
-        # FALLBACK
-        # ----------------------------------------------------
-
-        new_serial.append(
-            str(accessory_no)
-        )
-
-        accessory_no += 1
-
-    structure["Final S.No."] = new_serial
-
-    return structure
-
-
-# ============================================================
-# FINAL BOQ HTML
-# ============================================================
-
-def final_boq_html(bom_with_price):
-
-    if bom_with_price.empty:
-
-        return ""
-
-    structure = prepare_final_boq(
-        bom_with_price
-    )
-
-    html = f"""
-    <style>
-
-    .boq-table {{
-        width:100%;
-        border-collapse:collapse;
-        font-family:Arial,sans-serif;
-        font-size:12px;
-        border:1px solid #D5E2EA;
-    }}
-
-    .boq-table th {{
-        background:#F1F5F8;
-        color:#344054;
-        font-weight:700;
-        padding:8px 7px;
-        border:1px solid #D5E2EA;
-        text-align:left;
-    }}
-
-    .boq-table td {{
-        padding:7px;
-        border:1px solid #E2E8F0;
-        vertical-align:middle;
-        color:#263238;
-    }}
-
-    .boq-title td {{
-        background:{DARK_BLUE};
-        color:white !important;
-        font-weight:700;
-        font-size:14px;
-        text-align:center;
-        padding:10px;
-    }}
-
-    .boq-section td {{
-        background:{PRIMARY_BLUE};
-        color:white !important;
-        font-weight:700;
-        text-align:center;
-        padding:7px;
-    }}
-
-    .sno {{
-        width:6%;
-        text-align:center !important;
-    }}
-
-    .part {{
-        width:15%;
-    }}
-
-    .desc {{
-        width:46%;
-    }}
-
-    .qty {{
-        width:7%;
-        text-align:center !important;
-    }}
-
-    .uom {{
-        width:7%;
-        text-align:center !important;
-    }}
-
-    .price {{
-        width:10%;
-        text-align:right !important;
-    }}
-
-    </style>
-
-    <table class="boq-table">
-
-    <thead>
-        <tr>
-            <th class="sno">S.No.</th>
-            <th class="part">Part Code</th>
-            <th class="desc">Description</th>
-            <th class="qty">Qty</th>
-            <th class="uom">UOM</th>
-            <th class="price">Unit Price</th>
-            <th class="price">Total Price</th>
-        </tr>
-    </thead>
-
-    <tbody>
-    """
-
-    cooling_added = False
-    accessories_added = False
-    pdu_added = False
-
-    for _, row in structure.iterrows():
-
-        part_code = str(
-            row["Part Code"]
-        ).strip()
-
-        description = str(
-            row["Description"]
-        ).strip()
-
-        serial_no = str(
-            row["Final S.No."]
-        ).strip()
-
-        component_type = str(
-            row["Component Type"]
-        ).strip()
-
-        quantity = row["Quantity"]
-
-        uom = str(
-            row["UOM"]
-        ).strip()
-
-        unit_price = row.get(
-            "Unit Price",
-            None
-        )
-
-        total_price = row.get(
-            "Total Price",
-            None
-        )
-
-        # ----------------------------------------------------
-        # MAIN MDC TITLE
-        # ----------------------------------------------------
-
-        if (
-            serial_no == ""
-            and
-            "SINGLE RACK MDC"
-            in description.upper()
-        ):
-
-            html += f"""
-            <tr class="boq-title">
-                <td colspan="7">
-                    {description}
-                </td>
-            </tr>
-            """
-
-            continue
-
-        # ----------------------------------------------------
-        # COOLING HEADING
-        # ----------------------------------------------------
-
-        if (
-            part_code
-            and
-            not cooling_added
-            and
-            serial_no.startswith("2.")
-        ):
-
-            html += """
-            <tr class="boq-section">
-                <td colspan="7">
-                    COOLING UNIT
-                </td>
-            </tr>
-            """
-
-            cooling_added = True
-
-        # ----------------------------------------------------
-        # OTHER ACCESSORIES
-        # ----------------------------------------------------
-
-        if (
-            component_type
-            == "Optional Accessory"
-            and
-            not accessories_added
-        ):
-
-            html += """
-            <tr class="boq-section">
-                <td colspan="7">
-                    OTHER ACCESSORIES
-                </td>
-            </tr>
-            """
-
-            accessories_added = True
-
-        # ----------------------------------------------------
-        # PDU
-        # ----------------------------------------------------
-
-        if (
-            component_type == "PDU"
-            and
-            not pdu_added
-        ):
-
-            html += """
-            <tr class="boq-section">
-                <td colspan="7">
-                    PDU
-                </td>
-            </tr>
-            """
-
-            pdu_added = True
-
-        # ----------------------------------------------------
-        # PRICES
-        # ----------------------------------------------------
-
-        unit_display = (
-            money(unit_price)
-            if pd.notna(unit_price)
-            else "N/A"
-        )
-
-        total_display = (
-            money(total_price)
-            if pd.notna(total_price)
-            else "N/A"
-        )
-
-        html += f"""
-        <tr>
-
-            <td class="sno">
-                {serial_no}
-            </td>
-
-            <td class="part">
-                {part_code}
-            </td>
-
-            <td class="desc">
-                {description}
-            </td>
-
-            <td class="qty">
-                {quantity}
-            </td>
-
-            <td class="uom">
-                {uom}
-            </td>
-
-            <td class="price">
-                {unit_display}
-            </td>
-
-            <td class="price">
-                {total_display}
-            </td>
-
-        </tr>
-        """
-
-    html += """
-    </tbody>
-    </table>
-    """
-
-    return html
-
-
-# ============================================================
-# EXCEL EXPORT
-# ============================================================
-
-def excel_bytes(
-    internal=False,
-    bom=None,
-    cost_data=None
-):
-
-    output = BytesIO()
-
-    if bom is None:
-
-        bom = build_bom()
-
-    final_boq = prepare_final_boq(
-        bom
-    )
-
-    cust = customer_table()
-
-    with pd.ExcelWriter(
-        output,
-        engine="openpyxl"
-    ) as writer:
-
-        # ----------------------------------------------------
-        # CUSTOMER / CONFIGURATION
-        # ----------------------------------------------------
-
-        cust.to_excel(
-            writer,
-            index=False,
-            sheet_name="Customer & Configuration"
-        )
-
-        # ----------------------------------------------------
-        # FINAL BOQ
-        # ----------------------------------------------------
-
-        sales_cols = [
-            "Final S.No.",
-            "Part Code",
-            "Description",
-            "Quantity",
-            "UOM",
-            "Unit Price",
-            "Total Price",
-        ]
-
-        sales_boq = final_boq[
-            sales_cols
-        ].copy()
-
-        sales_boq.columns = [
-            "S.No.",
-            "Part Code",
-            "Description",
-            "Qty",
-            "UOM",
-            "Unit Price",
-            "Total Price",
-        ]
-
-        sales_boq.to_excel(
-            writer,
-            index=False,
-            sheet_name="Final BOQ"
-        )
-
-        # ----------------------------------------------------
-        # INTERNAL COST
-        # ----------------------------------------------------
-
-        if internal and cost_data is not None:
-
-            internal_cols = [
-                "Final S.No.",
-                "Part Code",
-                "Description",
-                "Quantity",
-                "UOM",
-                "Unit Cost",
-                "Total Cost",
-                "Unit Price",
-                "Total Price",
-            ]
-
-            internal_boq = final_boq[
-                internal_cols
-            ].copy()
-
-            internal_boq.columns = [
-                "S.No.",
-                "Part Code",
-                "Description",
-                "Qty",
-                "UOM",
-                "Unit Cost",
-                "Total Cost",
-                "Unit Price",
-                "Total Price",
-            ]
-
-            internal_boq.to_excel(
-                writer,
-                index=False,
-                sheet_name="Internal Cost BOQ"
-            )
-
-            pd.DataFrame(
-                cost_data,
-                columns=[
-                    "Item",
-                    "Value"
-                ]
-            ).to_excel(
-                writer,
-                index=False,
-                sheet_name="Cost Summary"
-            )
-
-    output.seek(0)
-
-    return output
-
-
-# ============================================================
-# PDF EXPORT
-# ============================================================
-
-def pdf_bytes(
-    bom_with_price,
-    internal=False,
-    cost_data=None
-):
-
-    output = BytesIO()
-
-    doc = SimpleDocTemplate(
-        output,
-        pagesize=landscape(A4),
-        rightMargin=10 * mm,
-        leftMargin=10 * mm,
-        topMargin=10 * mm,
-        bottomMargin=10 * mm,
-    )
-
-    styles = getSampleStyleSheet()
-
-    title_style = ParagraphStyle(
-        "MDCTitle",
-        parent=styles["Title"],
-        fontSize=18,
-        leading=22,
-        textColor=colors.HexColor(
-            DARK_BLUE
-        ),
-        alignment=TA_CENTER,
-        spaceAfter=8,
-    )
-
-    normal_style = ParagraphStyle(
-        "MDCNormal",
-        parent=styles["Normal"],
-        fontSize=8,
-        leading=10,
-    )
-
-    small_style = ParagraphStyle(
-        "MDCSmall",
-        parent=styles["Normal"],
-        fontSize=7,
-        leading=8,
-    )
-
-    story = []
-
-    story.append(
-        Paragraph(
-            "Eaton MDC Solution Configurator",
-            title_style
-        )
-    )
-
-    story.append(
-        Paragraph(
-            "Modular Data Center Solution Configuration & Pricing",
-            ParagraphStyle(
-                "subtitle",
-                parent=normal_style,
-                alignment=TA_CENTER,
-                fontSize=9,
-                textColor=colors.HexColor(
-                    TEXT_MUTED
-                ),
-            )
-        )
-    )
-
-    story.append(
-        Spacer(1, 5 * mm)
-    )
-
-    # --------------------------------------------------------
-    # CUSTOMER INFORMATION
-    # --------------------------------------------------------
-
-    customer_data = [
-        [
-            "User Code",
-            st.session_state.user_code,
-            "Date",
-            datetime.now().strftime(
-                "%d-%m-%Y"
-            ),
-        ],
-        [
-            "Customer Name",
-            st.session_state.customer_name,
-            "Customer Place",
-            st.session_state.customer_place,
-        ],
-        [
-            "MDC Type",
-            st.session_state.mdc_type,
-            "Configuration",
-            configuration_display_name(
-                st.session_state.configuration
-            ),
-        ],
-        [
-            "PDU Type",
-            st.session_state.pdu_type,
-            "PDU Part",
-            st.session_state.selected_pdu_part,
-        ],
-    ]
-
-    customer_table_pdf = Table(
-        customer_data,
-        colWidths=[
-            28 * mm,
-            70 * mm,
-            30 * mm,
-            105 * mm,
-        ],
-    )
-
-    customer_table_pdf.setStyle(
-        TableStyle(
-            [
-                (
-                    "BACKGROUND",
-                    (0, 0),
-                    (0, -1),
-                    colors.HexColor(
-                        LIGHT_BLUE
-                    ),
-                ),
-                (
-                    "BACKGROUND",
-                    (2, 0),
-                    (2, -1),
-                    colors.HexColor(
-                        LIGHT_BLUE
-                    ),
-                ),
-                (
-                    "TEXTCOLOR",
-                    (0, 0),
-                    (-1, -1),
-                    colors.HexColor(
-                        TEXT_DARK
-                    ),
-                ),
-                (
-                    "FONTNAME",
-                    (0, 0),
-                    (-1, -1),
-                    "Helvetica",
-                ),
-                (
-                    "FONTNAME",
-                    (0, 0),
-                    (0, -1),
-                    "Helvetica-Bold",
-                ),
-                (
-                    "FONTNAME",
-                    (2, 0),
-                    (2, -1),
-                    "Helvetica-Bold",
-                ),
-                (
-                    "FONTSIZE",
-                    (0, 0),
-                    (-1, -1),
-                    7.5,
-                ),
-                (
-                    "GRID",
-                    (0, 0),
-                    (-1, -1),
-                    0.4,
-                    colors.HexColor(
-                        BORDER_BLUE
-                    ),
-                ),
-                (
-                    "VALIGN",
-                    (0, 0),
-                    (-1, -1),
-                    "MIDDLE",
-                ),
-                (
-                    "LEFTPADDING",
-                    (0, 0),
-                    (-1, -1),
-                    5,
-                ),
-                (
-                    "RIGHTPADDING",
-                    (0, 0),
-                    (-1, -1),
-                    5,
-                ),
-            ]
-        )
-    )
-
-    story.append(
-        customer_table_pdf
-    )
-
-    story.append(
-        Spacer(1, 5 * mm)
-    )
-
-    # --------------------------------------------------------
-    # FINAL BOQ
-    # --------------------------------------------------------
-
-    final_boq = prepare_final_boq(
-        bom_with_price
-    )
-
-    table_data = [
-        [
-            "S.No.",
-            "Part Code",
-            "Description",
-            "Qty",
-            "UOM",
-            "Unit Price",
-            "Total Price",
-        ]
-    ]
-
-    for _, row in final_boq.iterrows():
-
-        table_data.append(
-            [
-                str(
-                    row["Final S.No."]
-                ),
-                str(
-                    row["Part Code"]
-                ),
-                Paragraph(
-                    str(
-                        row["Description"]
-                    ),
-                    small_style
-                ),
-                str(
-                    row["Quantity"]
-                ),
-                str(
-                    row["UOM"]
-                ),
-                (
-                    money(
-                        row["Unit Price"]
-                    )
-                    if pd.notna(
-                        row["Unit Price"]
-                    )
-                    else "N/A"
-                ),
-                (
-                    money(
-                        row["Total Price"]
-                    )
-                    if pd.notna(
-                        row["Total Price"]
-                    )
-                    else "N/A"
-                ),
-            ]
-        )
-
-    boq_pdf_table = Table(
-        table_data,
-        colWidths=[
-            15 * mm,
-            32 * mm,
-            105 * mm,
-            16 * mm,
-            16 * mm,
-            32 * mm,
-            35 * mm,
-        ],
-        repeatRows=1,
-    )
-
-    boq_pdf_table.setStyle(
-        TableStyle(
-            [
-                (
-                    "BACKGROUND",
-                    (0, 0),
-                    (-1, 0),
-                    colors.HexColor(
-                        DARK_BLUE
-                    ),
-                ),
-                (
-                    "TEXTCOLOR",
-                    (0, 0),
-                    (-1, 0),
-                    colors.white,
-                ),
-                (
-                    "FONTNAME",
-                    (0, 0),
-                    (-1, 0),
-                    "Helvetica-Bold",
-                ),
-                (
-                    "FONTSIZE",
-                    (0, 0),
-                    (-1, -1),
-                    7,
-                ),
-                (
-                    "GRID",
-                    (0, 0),
-                    (-1, -1),
-                    0.35,
-                    colors.HexColor(
-                        "#D5E2EA"
-                    ),
-                ),
-                (
-                    "VALIGN",
-                    (0, 0),
-                    (-1, -1),
-                    "MIDDLE",
-                ),
-                (
-                    "ALIGN",
-                    (0, 0),
-                    (0, -1),
-                    "CENTER",
-                ),
-                (
-                    "ALIGN",
-                    (3, 1),
-                    (4, -1),
-                    "CENTER",
-                ),
-                (
-                    "ALIGN",
-                    (5, 1),
-                    (6, -1),
-                    "RIGHT",
-                ),
-            ]
-        )
-    )
-
-    story.append(
-        boq_pdf_table
-    )
-
-    story.append(
-        Spacer(1, 5 * mm)
-    )
-
-    # --------------------------------------------------------
-    # FINAL PRICE
-    # --------------------------------------------------------
-
-    final_price = 0.0
-
-    if not bom_with_price.empty:
-
-        final_price = float(
-            bom_with_price[
-                "Total Price"
-            ]
-            .fillna(0)
-            .sum()
-        )
-
-    story.append(
-        Paragraph(
-            f"<b>Final Selling Price: "
-            f"{money(final_price)}</b>",
-            ParagraphStyle(
-                "finalprice",
-                parent=normal_style,
-                fontSize=11,
-                textColor=colors.HexColor(
-                    DARK_BLUE
-                ),
-                alignment=TA_LEFT,
-            )
-        )
-    )
-
-    if internal and cost_data is not None:
-
-        story.append(
-            Spacer(1, 3 * mm)
-        )
-
-        story.append(
-            Paragraph(
-                "<b>Internal Cost Summary</b>",
-                normal_style
-            )
-        )
-
-        internal_data = [
-            [
-                str(item),
-                money(value)
-                if isinstance(
-                    value,
-                    (int, float)
-                )
-                else str(value)
-            ]
-            for item, value
-            in cost_data
-        ]
-
-        internal_table = Table(
-            [
-                ["Item", "Value"]
-            ]
-            + internal_data,
-            colWidths=[
-                55 * mm,
-                45 * mm
-            ],
-        )
-
-        internal_table.setStyle(
-            TableStyle(
-                [
-                    (
-                        "BACKGROUND",
-                        (0, 0),
-                        (-1, 0),
-                        colors.HexColor(
-                            PRIMARY_BLUE
-                        ),
-                    ),
-                    (
-                        "TEXTCOLOR",
-                        (0, 0),
-                        (-1, 0),
-                        colors.white,
-                    ),
-                    (
-                        "GRID",
-                        (0, 0),
-                        (-1, -1),
-                        0.3,
-                        colors.HexColor(
-                            BORDER_BLUE
-                        ),
-                    ),
-                    (
-                        "FONTSIZE",
-                        (0, 0),
-                        (-1, -1),
-                        7,
-                    ),
-                ]
-            )
-        )
-
-        story.append(
-            internal_table
-        )
-
-    doc.build(story)
-
-    output.seek(0)
-
-    return output
-
-
-# ============================================================
-# SAVE CONFIGURATION
-# ============================================================
 
 def save_configuration(
-    user_code,
+    configuration_id,
     bom,
     base_cost,
     optional_cost,
@@ -2209,22 +168,20 @@ def save_configuration(
     warranty_amount,
 ):
 
-    conn = sqlite3.connect(
-        TRACKING_DB
-    )
-
+    conn = sqlite3.connect(TRACKING_DB)
     cursor = conn.cursor()
 
     created_at = datetime.now().strftime(
         "%Y-%m-%d %H:%M:%S"
     )
 
-    cursor.execute(
-        """
-        INSERT OR REPLACE INTO configurations
-        (
+    # --------------------------------------------------------
+    # Save configuration master record
+    # --------------------------------------------------------
+
+    cursor.execute("""
+        INSERT OR REPLACE INTO configurations (
             configuration_id,
-            user_code,
             created_at,
 
             customer_name,
@@ -2234,9 +191,6 @@ def save_configuration(
 
             mdc_type,
             configuration,
-
-            pdu_type,
-            pdu_part_code,
 
             base_cost,
             optional_cost,
@@ -2252,65 +206,56 @@ def save_configuration(
             final_selling_price,
             warranty_amount
         )
-        VALUES
-        (
-            ?, ?, ?,
-            ?, ?, ?, ?,
-            ?, ?,
-            ?, ?,
-            ?, ?, ?, ?,
-            ?, ?, ?, ?,
-            ?, ?, ?
-        )
-        """,
-        (
-            user_code,
-            user_code,
-            created_at,
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    """, (
+        configuration_id,
+        created_at,
 
-            st.session_state.customer_name,
-            st.session_state.customer_place,
-            st.session_state.problem,
-            st.session_state.solution,
+        st.session_state.customer_name,
+        st.session_state.customer_place,
+        st.session_state.problem,
+        st.session_state.solution,
 
-            st.session_state.mdc_type,
-            st.session_state.configuration,
+        st.session_state.mdc_type,
+        st.session_state.configuration,
 
-            st.session_state.pdu_type,
-            st.session_state.selected_pdu_part,
+        float(base_cost),
+        float(optional_cost),
+        float(pdu_cost),
+        float(total_cost),
 
-            float(base_cost),
-            float(optional_cost),
-            float(pdu_cost),
-            float(total_cost),
+        float(margin_pct),
+        float(freight),
+        float(installation),
+        float(warranty_pct),
 
-            float(margin_pct),
-            float(freight),
-            float(installation),
-            float(warranty_pct),
+        float(margin_price),
+        float(final_selling_price),
+        float(warranty_amount),
+    ))
 
-            float(margin_price),
-            float(final_selling_price),
-            float(warranty_amount),
-        )
-    )
+    # --------------------------------------------------------
+    # Remove old items if same configuration is saved again
+    # --------------------------------------------------------
 
-    cursor.execute(
-        """
+    cursor.execute("""
         DELETE FROM configuration_items
         WHERE configuration_id = ?
-        """,
-        (user_code,)
-    )
+    """, (configuration_id,))
+
+    # --------------------------------------------------------
+    # Save complete BOM
+    # --------------------------------------------------------
 
     if bom is not None and not bom.empty:
 
         for _, row in bom.iterrows():
 
-            cursor.execute(
-                """
-                INSERT INTO configuration_items
-                (
+            unit_price = row.get("Unit Price", None)
+            total_price = row.get("Total Price", None)
+
+            cursor.execute("""
+                INSERT INTO configuration_items (
                     configuration_id,
 
                     component_type,
@@ -2324,98 +269,307 @@ def save_configuration(
                     unit_price,
                     total_price
                 )
-                VALUES
-                (
-                    ?, ?, ?, ?, ?, ?,
-                    ?, ?, ?, ?
-                )
-                """,
-                (
-                    user_code,
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """, (
+                configuration_id,
 
-                    str(
-                        row.get(
-                            "Component Type",
-                            ""
-                        )
-                    ),
+                str(row.get("Component Type", "")),
+                str(row.get("Part Code", "")),
+                str(row.get("Description", "")),
 
-                    str(
-                        row.get(
-                            "Part Code",
-                            ""
-                        )
-                    ),
+                float(row.get("Quantity", 0))
+                if pd.notna(row.get("Quantity"))
+                else 0,
 
-                    str(
-                        row.get(
-                            "Description",
-                            ""
-                        )
-                    ),
+                str(row.get("UOM", "")),
 
-                    float(
-                        row.get(
-                            "Quantity",
-                            0
-                        )
-                    ),
+                float(row.get("Unit Cost", 0))
+                if pd.notna(row.get("Unit Cost"))
+                else 0,
 
-                    str(
-                        row.get(
-                            "UOM",
-                            ""
-                        )
-                    ),
+                float(row.get("Total Cost", 0))
+                if pd.notna(row.get("Total Cost"))
+                else 0,
 
-                    float(
-                        row.get(
-                            "Unit Cost",
-                            0
-                        )
-                    ),
+                float(unit_price)
+                if pd.notna(unit_price)
+                else None,
 
-                    float(
-                        row.get(
-                            "Total Cost",
-                            0
-                        )
-                    ),
-
-                    (
-                        float(
-                            row["Unit Price"]
-                        )
-                        if pd.notna(
-                            row.get(
-                                "Unit Price"
-                            )
-                        )
-                        else None
-                    ),
-
-                    (
-                        float(
-                            row["Total Price"]
-                        )
-                        if pd.notna(
-                            row.get(
-                                "Total Price"
-                            )
-                        )
-                        else None
-                    ),
-                )
-            )
+                float(total_price)
+                if pd.notna(total_price)
+                else None,
+            ))
 
     conn.commit()
     conn.close()
 
 
-# ============================================================
-# HEADER
-# ============================================================
+# Initialize database when application starts
+init_tracking_db()
 
+# ------------------------------------------------------------
+# Load master data
+# ------------------------------------------------------------
+@st.cache_data
+def load_master():
+    configs = pd.read_excel(MASTER_FILE, sheet_name="Configurations")
+    components = pd.read_excel(MASTER_FILE, sheet_name="Components")
+    accessories = pd.read_excel(MASTER_FILE, sheet_name="Accessories")
+    pdus = pd.read_excel(MASTER_FILE, sheet_name="PDUs")
+    return configs, components, accessories, pdus
+
+configs_df, components_df, accessories_df, pdus_df = load_master()
+
+# ------------------------------------------------------------
+# Session state
+# ------------------------------------------------------------
+defaults = {
+    "mode": "Sales",
+    "authenticated": False,
+    "customer_name": "",
+    "customer_place": "",
+    "problem": "",
+    "solution": "",
+    "mdc_type": "Single Rack",
+    "configuration": "Configuration 1",
+    "accessory_qty": {},
+    "pdu_qty": {},
+    "margin_pct": 20.0,
+    "freight": 0.0,
+    "installation": 0.0,
+    "warranty_pct": 0.0,
+    "configuration_id": None,
+    "configuration_saved": False,
+
+}
+for key, value in defaults.items():
+    if key not in st.session_state:
+        st.session_state[key] = value
+if st.session_state.configuration_id is None:
+    st.session_state.configuration_id = generate_configuration_id()
+
+def money(value):
+    return f"₹ {value:,.2f}"
+
+
+def price_box(label, value):
+    st.markdown(
+        f"""
+        <div style="padding:4px 0 12px 0; min-height:82px; overflow:visible;">
+            <div style="font-size:16px; color:#4b5563; margin-bottom:7px;">
+                {label}
+            </div>
+            <div style="font-size:30px; font-weight:600; color:#30333d;
+                        white-space:nowrap; overflow:visible;">
+                {money(value)}
+            </div>
+        </div>
+        """,
+        unsafe_allow_html=True,
+    )
+
+def internal_password():
+    # Streamlit Cloud / deployment can use st.secrets["MDC_INTERNAL_PASSWORD"].
+    try:
+        return st.secrets["MDC_INTERNAL_PASSWORD"]
+    except Exception:
+        return DEMO_INTERNAL_PASSWORD
+
+def selected_config_record():
+    match = configs_df[
+        (configs_df["MDC Type"] == st.session_state.mdc_type)
+        & (configs_df["Configuration"] == st.session_state.configuration)
+    ]
+    return match.iloc[0] if not match.empty else None
+
+def selected_components():
+    return components_df[
+        (components_df["MDC Type"] == st.session_state.mdc_type)
+        & (components_df["Configuration"] == st.session_state.configuration)
+    ].copy()
+
+def build_bom():
+    rows = []
+
+    # Configuration BOM
+    for _, r in selected_components().iterrows():
+        cost = r["Unit Cost"]
+        qty = float(r["Quantity"])
+        rows.append({
+            "S.No.": len(rows) + 1,
+            "Component Type": "Base (Configuration)",
+            "Part Code": r["Part Code"] if pd.notna(r["Part Code"]) and str(r["Part Code"]).strip() and str(r["Part Code"]).lower() != "nan" else "",
+            "Description": r["Description"],
+            "Quantity": qty,
+            "UOM": r["UOM"],
+            "Unit Cost": cost,
+            "Total Cost": cost * qty if pd.notna(cost) else None,
+            "Source": "Configuration",
+        })
+
+    # Optional accessories
+    for _, r in accessories_df.iterrows():
+        part = str(r["Part Code"])
+        qty = float(st.session_state.accessory_qty.get(part, 0))
+        if qty > 0:
+            cost = r["Unit Cost"]
+            rows.append({
+                "S.No.": len(rows) + 1,
+                "Component Type": "Optional Accessory",
+                "Part Code": part if part.strip() and part.lower() != "nan" else "",
+                "Description": r["Description"],
+                "Quantity": qty,
+                "UOM": r["UOM"],
+                "Unit Cost": cost,
+                "Total Cost": cost * qty if pd.notna(cost) else None,
+                "Source": "Optional Accessory",
+            })
+
+    # PDU
+    for _, r in pdus_df.iterrows():
+        part = str(r["Part Code"])
+        qty = float(st.session_state.pdu_qty.get(part, 0))
+        if qty > 0:
+            cost = r["Unit Cost"]
+            desc = f'{r["Description"]} | Type: {r["Type"]} | C13: {r["C13"]} | C19: {r["C19"]}'
+            rows.append({
+                "S.No.": len(rows) + 1,
+                "Component Type": "PDU",
+                "Part Code": part if part.strip() and part.lower() != "nan" else "",
+                "Description": desc,
+                "Quantity": qty,
+                "UOM": r["UOM"],
+                "Unit Cost": cost,
+                "Total Cost": cost * qty if pd.notna(cost) else None,
+                "Source": "PDU",
+            })
+
+    return pd.DataFrame(rows)
+
+def cost_summary(bom):
+    cfg = selected_config_record()
+    base_cost = float(cfg["Base Cost"]) if cfg is not None and pd.notna(cfg["Base Cost"]) else 0.0
+
+    optional_cost = 0.0
+    pdu_cost = 0.0
+
+    if not bom.empty:
+        optional_cost = float(
+            bom.loc[bom["Source"] == "Optional Accessory", "Total Cost"]
+            .fillna(0).sum()
+        )
+        pdu_cost = float(
+            bom.loc[bom["Source"] == "PDU", "Total Cost"]
+            .fillna(0).sum()
+        )
+
+    total_cost = base_cost + optional_cost + pdu_cost
+    return base_cost, optional_cost, pdu_cost, total_cost
+
+def add_selling_prices(bom, total_cost, margin_pct, freight, installation):
+    result = bom.copy()
+
+    # Cost-based margin conversion.
+    margin_price = total_cost / (1 - margin_pct / 100) if margin_pct < 100 else 0
+    final_selling_price = margin_price + freight + installation
+
+    # Allocate the final selling price proportionally to known-cost BOM lines.
+    # This makes BOM Total Price reconcile to the final selling price.
+    known_cost_total = result["Total Cost"].fillna(0).sum() if not result.empty else 0
+
+    if known_cost_total > 0:
+        result["Total Price"] = result["Total Cost"].fillna(0) / known_cost_total * final_selling_price
+        result["Unit Price"] = result["Total Price"] / result["Quantity"]
+    else:
+        result["Total Price"] = pd.NA
+        result["Unit Price"] = pd.NA
+
+    return result, margin_price, final_selling_price
+
+def customer_table():
+    return pd.DataFrame([
+        ["Customer Name", st.session_state.customer_name],
+        ["Customer Place", st.session_state.customer_place],
+        ["Problem Description", st.session_state.problem],
+        ["Solution", st.session_state.solution],
+        ["MDC Type", st.session_state.mdc_type],
+        ["Configuration", st.session_state.configuration],
+    ], columns=["Field", "Value"])
+
+def excel_bytes(internal=False, bom=None, cost_data=None):
+    output = BytesIO()
+    cust = customer_table()
+
+    if bom is None:
+        bom = build_bom()
+
+    with pd.ExcelWriter(output, engine="openpyxl") as writer:
+        cust.to_excel(writer, index=False, sheet_name="Customer & Configuration")
+
+        sales_cols = [
+            "S.No.", "Component Type", "Part Code", "Description", "Quantity",
+            "UOM", "Unit Price", "Total Price"
+        ]
+        sales_bom = bom[sales_cols].copy()
+        sales_bom.to_excel(writer, index=False, sheet_name="Final BOM")
+
+        if internal and cost_data is not None:
+            internal_bom = bom.copy()
+            internal_cols = [
+                "S.No.", "Component Type", "Part Code", "Description", "Quantity", "UOM",
+                "Unit Cost", "Total Cost", "Unit Price", "Total Price"
+            ]
+            internal_bom[internal_cols].to_excel(
+                writer, index=False, sheet_name="Internal Cost BOM"
+            )
+
+            pd.DataFrame(cost_data, columns=["Item", "Value"]).to_excel(
+                writer, index=False, sheet_name="Cost Summary"
+            )
+
+    output.seek(0)
+    return output
+
+# ------------------------------------------------------------
+# Header
+# ------------------------------------------------------------
+# st.markdown(
+#     """
+#     <div style="
+#         display:flex;
+#         align-items:center;
+#         gap:14px;
+#         padding:12px 0 16px 0;
+#     ">
+#         <div style="
+#             width:8px;
+#             height:55px;
+#             background:#0167C9;
+#             border-radius:4px;
+#         "></div>
+
+#         <div>
+#             <div style="
+#                 font-size:36px;
+#                 font-weight:700;
+#                 color:#004B91;
+#                 line-height:1.1;
+#             ">
+#                 MDC Solution
+#             </div>
+
+#             <div style="
+#                 font-size:16px;
+#                 color:#64748B;
+#                 margin-top:5px;
+#             ">
+#                 Rack Configuration & Solution Selection
+#             </div>
+#         </div>
+#     </div>
+#     """,
+#     unsafe_allow_html=True,
+# )
 st.html("""
 <div style="
     background: linear-gradient(135deg, #005EB8, #003B71);
@@ -2444,1254 +598,1158 @@ st.html("""
     </div>
 </div>
 """)
-
-
 # ============================================================
-# ACCESS MODE
+# CONFIGURATION TRACKING ID
 # ============================================================
 
+st.html(f"""
+<div style="
+    background-color:#F7FBFF;
+    border:1px solid #B8D8F5;
+    border-left:6px solid #005EB8;
+    border-radius:8px;
+    padding:12px 18px;
+    margin:0 0 20px 0;
+">
+
+    <div style="
+        font-size:13px;
+        color:#64748B;
+        margin-bottom:4px;
+    ">
+        Configuration ID
+    </div>
+
+    <div style="
+        font-size:20px;
+        font-weight:700;
+        color:#003B71;
+    ">
+        {st.session_state.configuration_id}
+    </div>
+
+</div>
+""")
+# ------------------------------------------------------------
+# Access mode
+# ------------------------------------------------------------
 with st.sidebar:
-
     st.header("User Access")
 
     mode = st.radio(
         "Select User Type",
-        [
-            "Sales",
-            "Internal – MDC"
-        ],
-        index=(
-            0
-            if st.session_state.mode == "Sales"
-            else 1
-        ),
+        ["Sales", "Internal – MDC"],
+        index=0 if st.session_state.mode == "Sales" else 1,
     )
 
     if mode != st.session_state.mode:
-
         st.session_state.mode = mode
-
         if mode == "Sales":
-
             st.session_state.authenticated = False
-
         st.rerun()
 
     if mode == "Internal – MDC":
-
         if not st.session_state.authenticated:
-
-            st.warning(
-                "Internal MDC access requires a password."
-            )
-
-            pwd = st.text_input(
-                "MDC Password",
-                type="password"
-            )
-
-            if st.button(
-                "Unlock Internal Mode",
-                use_container_width=True
-            ):
-
+            st.warning("Internal MDC access requires a password.")
+            pwd = st.text_input("MDC Password", type="password")
+            if st.button("Unlock Internal Mode", use_container_width=True):
                 if pwd == internal_password():
-
                     st.session_state.authenticated = True
-
                     st.rerun()
-
                 else:
-
-                    st.error(
-                        "Incorrect password."
-                    )
-
+                    st.error("Incorrect password.")
         else:
-
-            st.success(
-                "Internal mode unlocked."
-            )
-
-            if st.button(
-                "Lock Internal Mode",
-                use_container_width=True
-            ):
-
+            st.success("Internal mode unlocked.")
+            if st.button("Lock Internal Mode", use_container_width=True):
                 st.session_state.authenticated = False
-
                 st.session_state.mode = "Sales"
-
                 st.rerun()
 
-
 is_internal = (
-    st.session_state.mode
-    == "Internal – MDC"
-    and
-    st.session_state.authenticated
+    st.session_state.mode == "Internal – MDC"
+    and st.session_state.authenticated
 )
 
-
-# ============================================================
-# 1. CUSTOMER DETAILS
-# ============================================================
-
-st.markdown(
-    '<div class="section-ribbon">1. Customer Details</div>',
-    unsafe_allow_html=True
-)
+# ------------------------------------------------------------
+# 1 Customer details
+# ------------------------------------------------------------
+st.header("1. Customer Details")
 
 c1, c2 = st.columns(2)
-
 with c1:
-
     st.session_state.customer_name = st.text_input(
-        "Customer Name *",
-        value=st.session_state.customer_name,
-        placeholder="Enter customer name"
+        "Customer Name", st.session_state.customer_name
     )
-
 with c2:
-
     st.session_state.customer_place = st.text_input(
-        "Customer Place",
-        value=st.session_state.customer_place,
-        placeholder="Enter location"
+        "Customer Place", st.session_state.customer_place
     )
 
-
-c3, c4 = st.columns(2)
-
-with c3:
-
-    st.session_state.problem = st.text_area(
-        "Problem Description",
-        value=st.session_state.problem,
-        height=65
-    )
-
-with c4:
-
-    st.session_state.solution = st.text_area(
-        "Solution",
-        value=st.session_state.solution,
-        height=65
-    )
-
-
-# ============================================================
-# 2. MDC TYPE + CONFIGURATION
-# ============================================================
-
-st.markdown(
-    '<div class="section-ribbon">2. MDC Type & Configuration</div>',
-    unsafe_allow_html=True
+st.session_state.problem = st.text_area(
+    "Problem Description", st.session_state.problem, height=90
+)
+st.session_state.solution = st.text_area(
+    "Solution", st.session_state.solution, height=90
 )
 
-config_col1, config_col2 = st.columns(
-    [1, 3],
-    gap="small"
+# ============================================================
+# 2. MDC Type & Configuration
+# ============================================================
+
+st.header("2. MDC Type & Configuration")
+
+mdc_type = st.radio(
+    "MDC Type",
+    ["Single Rack", "Multirack"],
+    horizontal=True,
+    index=0 if st.session_state.mdc_type == "Single Rack" else 1,
 )
 
+if mdc_type != st.session_state.mdc_type:
 
-with config_col1:
+    st.session_state.mdc_type = mdc_type
+    st.session_state.configuration = "Configuration 1"
 
-    mdc_types = [
-        "Single Rack",
-        "Multirack"
-    ]
+    st.session_state.accessory_qty = {}
+    st.session_state.pdu_qty = {}
 
-    current_index = (
-        mdc_types.index(
-            st.session_state.mdc_type
-        )
-        if st.session_state.mdc_type
-        in mdc_types
-        else 0
-    )
+    # New configuration ID
+    st.session_state.configuration_id = generate_configuration_id()
+    st.session_state.configuration_saved = False
 
-    selected_mdc_type = st.selectbox(
-        "MDC Type",
-        mdc_types,
-        index=current_index,
-        key="mdc_type_select"
-    )
+    st.rerun()
 
+available = configs_df[
+    configs_df["MDC Type"] == st.session_state.mdc_type
+].copy()
 
-with config_col2:
+labels = available["Configuration"].tolist()
 
-    available = configs_df[
-        configs_df["MDC Type"]
-        == selected_mdc_type
-    ].copy()
-
-    available_configs = (
-        available["Configuration"]
-        .astype(str)
-        .tolist()
-    )
-
-    if not available_configs:
-
-        available_configs = [
-            "Configuration 1"
-        ]
-
-    if (
-        st.session_state.configuration
-        not in available_configs
-    ):
-
-        st.session_state.configuration = (
-            available_configs[0]
-        )
-
-    selected_config = st.selectbox(
-        "Configuration",
-        available_configs,
-        format_func=configuration_display_name,
-        index=available_configs.index(
-            st.session_state.configuration
+if labels:
+    st.session_state.configuration = st.selectbox(
+        "Select Configuration",
+        labels,
+        index=(
+            labels.index(st.session_state.configuration)
+            if st.session_state.configuration in labels
+            else 0
         ),
-        key="configuration_select"
     )
-
 
 # ------------------------------------------------------------
-# Detect MDC type/configuration change
-# ------------------------------------------------------------
-
-if selected_mdc_type != st.session_state.mdc_type:
-
-    st.session_state.mdc_type = (
-        selected_mdc_type
-    )
-
-    st.session_state.configuration = (
-        available_configs[0]
-    )
-
-    st.session_state.pdu_type = "None"
-
-    reset_pdu()
-
-    st.session_state.accessory_qty = {}
-
-    st.rerun()
-
-
-if selected_config != st.session_state.configuration:
-
-    st.session_state.configuration = (
-        selected_config
-    )
-
-    st.session_state.pdu_type = "None"
-
-    reset_pdu()
-
-    st.session_state.accessory_qty = {}
-
-    st.rerun()
-
-
-# ------------------------------------------------------------
-# Selected configuration
+# Selected Configuration Display
 # ------------------------------------------------------------
 
 cfg = selected_config_record()
 
 if cfg is not None:
-
-    config_title = configuration_display_name(
-        st.session_state.configuration
-    )
-
     st.markdown(
         f"""
-        <div class="selection-card">
-
-            <div class="selection-label">
-                SELECTED CONFIGURATION
-            </div>
-
-            <div class="selection-value">
-                {st.session_state.configuration}
-                &nbsp;—&nbsp;
-                {config_title}
-            </div>
-
-        </div>
-        """,
-        unsafe_allow_html=True
-    )
-
-
-# ============================================================
-# USER CODE
-# ============================================================
-
-# Generate a provisional code for current selection.
-# It changes automatically with selections.
-
-st.session_state.user_code = (
-    generate_user_code()
-)
-
-st.markdown(
-    f"""
-    <div class="user-code-card">
-
-        <div class="user-code-label">
-            User Code
-        </div>
-
-        <div class="user-code-value">
-            {st.session_state.user_code}
-        </div>
-
-    </div>
-    """,
-    unsafe_allow_html=True
-)
-
-
-# ============================================================
-# 3. PDU SELECTION
-# ============================================================
-
-st.markdown(
-    '<div class="section-ribbon">3. PDU Selection</div>',
-    unsafe_allow_html=True
-)
-
-
-pdu_types = [
-    "Basic",
-    "Metered",
-    "Switched",
-    "None",
-]
-
-
-selected_pdu_type = st.radio(
-    "PDU Type",
-    pdu_types,
-    horizontal=True,
-    index=pdu_types.index(
-        st.session_state.pdu_type
-    ),
-    key="pdu_type_radio"
-)
-
-
-if selected_pdu_type != st.session_state.pdu_type:
-
-    st.session_state.pdu_type = (
-        selected_pdu_type
-    )
-
-    reset_pdu()
-
-    st.rerun()
-
-
-# ------------------------------------------------------------
-# PDU component selection
-# ------------------------------------------------------------
-
-if st.session_state.pdu_type != "None":
-
-    pdu_rows = get_pdu_rows()
-
-    if pdu_rows.empty:
-
-        st.warning(
-            f"No {st.session_state.pdu_type} PDU "
-            "components were found in the Excel master."
-        )
-
-        reset_pdu()
-
-    else:
-
-        pdu_options = []
-
-        for _, r in pdu_rows.iterrows():
-
-            pdu_options.append(
-                (
-                    str(r["Part Code"]),
-                    f'{r["Part Code"]} — {r["Description"]}'
-                )
-            )
-
-        option_labels = [
-            x[1]
-            for x in pdu_options
-        ]
-
-        current_pdu_index = 0
-
-        if st.session_state.selected_pdu_part:
-
-            current_parts = [
-                x[0]
-                for x in pdu_options
-            ]
-
-            if (
-                st.session_state.selected_pdu_part
-                in current_parts
-            ):
-
-                current_pdu_index = (
-                    current_parts.index(
-                        st.session_state.selected_pdu_part
-                    )
-                )
-
-        pc1, pc2 = st.columns(
-            [5.5, 1.2],
-            gap="small"
-        )
-
-        with pc1:
-
-            selected_pdu_label = st.selectbox(
-                "Select PDU Component",
-                option_labels,
-                index=current_pdu_index,
-                key="pdu_component_select"
-            )
-
-        with pc2:
-
-            current_part = pdu_options[
-                option_labels.index(
-                    selected_pdu_label
-                )
-            ][0]
-
-            current_qty = int(
-                st.session_state.pdu_qty.get(
-                    current_part,
-                    1
-                )
-            )
-
-            pdu_quantity = st.number_input(
-                "Qty",
-                min_value=1,
-                max_value=999,
-                value=current_qty,
-                step=1,
-                key="pdu_quantity_input"
-            )
-
-        selected_part = pdu_options[
-            option_labels.index(
-                selected_pdu_label
-            )
-        ][0]
-
-        st.session_state.selected_pdu_part = (
-            selected_part
-        )
-
-        st.session_state.pdu_qty = {
-            selected_part: pdu_quantity
-        }
-
-else:
-
-    reset_pdu()
-
-
-# ============================================================
-# 4. OTHER ACCESSORIES
-# ============================================================
-
-st.markdown(
-    '<div class="section-ribbon">4. Other Accessories</div>',
-    unsafe_allow_html=True
-)
-
-
-# ------------------------------------------------------------
-# 4.1 Fire Suppression
-# ------------------------------------------------------------
-
-acc1, acc2 = st.columns(
-    [3.8, 2.0],
-    gap="small"
-)
-
-with acc1:
-
-    fire_options = [
-        "None",
-        "External",
-        "Internal"
-    ]
-
-    fire_index = fire_options.index(
-        st.session_state.fire_suppression
-    )
-
-    fire_selection = st.selectbox(
-        "3.1 Fire Suppression",
-        fire_options,
-        index=fire_index,
-        key="fire_suppression_select"
-    )
-
-with acc2:
-
-    st.markdown(
-        """
         <div style="
-            font-size:12px;
-            color:#64748B;
-            padding-top:30px;
+            background-color: #005EB8;
+            color: white;
+            padding: 15px 20px;
+            border-radius: 10px;
+            font-size: 18px;
+            font-weight: 600;
+            margin-top: 10px;
+            margin-bottom: 10px;
         ">
-            Select External or Internal
+            Selected Configuration:
+            {cfg["Configuration"]} — {cfg["Configuration Title"]}
         </div>
         """,
         unsafe_allow_html=True
     )
 
+# ------------------------------------------------------------
+# 3 Optional accessories
+# ------------------------------------------------------------
+# st.header("3. Optional Accessories")
 
-if fire_selection != st.session_state.fire_suppression:
+# for _, r in accessories_df.iterrows():
+#     part = str(r["Part Code"])
+#     key_check = f"acc_check_{part}"
+#     key_qty = f"acc_qty_{part}"
 
-    st.session_state.fire_suppression = (
-        fire_selection
-    )
+#     col1, col2 = st.columns([5.5, 1.8], vertical_alignment="center")
 
+#     with col1:
+#         selected = st.checkbox(
+#             f'{part} — {r["Description"]}',
+#             value=st.session_state.accessory_qty.get(part, 0) > 0,
+#             key=key_check
+#         )
+
+#     with col2:
+#         if selected:
+#             qty = st.number_input(
+#                 "Quantity",
+#                 min_value=1,
+#                 step=1,
+#                 value=st.session_state.accessory_qty.get(part, 1),
+#                 key=key_qty,
+#                 label_visibility="visible"
+#             )
+#             st.session_state.accessory_qty[part] = qty
+#         else:
+#             st.session_state.accessory_qty.pop(part, None)
+# ============================================================
+# 3. OPTIONAL ACCESSORIES
+# ============================================================
+
+st.header("3. Optional Accessories")
 
 # ------------------------------------------------------------
-# 3.2 Camera
+# PART CODES
 # ------------------------------------------------------------
 
-camera_options = [
-    "No",
-    "Yes"
+FIRE_SUPPRESSION_PARTS = [
+    "801073203",   # FIRE SUPR EXT42U...
+    "HRD-XH1C",    # FIRE SUPPRESS, RACK MNT...
 ]
 
-camera_col1, camera_col2 = st.columns(
-    [3.8, 2.0],
-    gap="small"
+FIRE_SUPPRESSION_SUPPORT = [
+    "801075235",   # BRUSH PANEL 1 U
+]
+
+CAMERA_PARTS = [
+    "801303201",   # CAMERA, 4MP VANDAL
+    "801303202",   # CAMERA, NVR 4 CHA INT
+    "801303204",   # CAMERA, POE GB 4P
+    "801303206",   # CAMERA, CAT 5 CABLE RJ45
+    "801303208",   # CAMERA, SVR HDD 1TB
+    "801303203",   # CAMERA, SVR HDD 4TB
+]
+
+# ------------------------------------------------------------
+# CREATE PART-CODE LOOKUP FROM accessories_df
+# ------------------------------------------------------------
+
+optional_lookup = {}
+
+for _, r in accessories_df.iterrows():
+
+    part = str(r["Part Code"]).strip()
+
+    if part and part.lower() != "nan":
+        optional_lookup[part] = r
+
+
+# ============================================================
+# FIRE SUPPRESSION
+# ============================================================
+
+st.subheader("🔥 Fire Suppression")
+
+st.caption(
+    "Select the required Fire Suppression system. "
+    "Brush Panel 1 U will be added automatically."
 )
 
-with camera_col1:
+fire_selected = False
 
-    camera_selection = st.selectbox(
-        "3.2 Camera",
-        camera_options,
-        index=camera_options.index(
-            st.session_state.camera_enabled
+for part in FIRE_SUPPRESSION_PARTS:
+
+    if part not in optional_lookup:
+        continue
+
+    r = optional_lookup[part]
+
+    selected = st.checkbox(
+        f'{part} — {r["Description"]}',
+        value=(
+            st.session_state.accessory_qty.get(part, 0) > 0
         ),
-        key="camera_select"
+        key=f"fire_{part}"
     )
-
-with camera_col2:
-
-    st.markdown(
-        """
-        <div style="
-            font-size:12px;
-            color:#64748B;
-            padding-top:30px;
-        ">
-            Camera system components are
-            taken automatically from Excel.
-        </div>
-        """,
-        unsafe_allow_html=True
-    )
-
-
-st.session_state.camera_enabled = (
-    camera_selection
-)
-
-
-# ------------------------------------------------------------
-# 3.3 - 3.6 Other accessories
-# ------------------------------------------------------------
-
-oa1, oa2 = st.columns(2, gap="small")
-
-
-with oa1:
-
-    rotating = st.checkbox(
-        "3.3 Rotating Keyboard",
-        value=st.session_state.rotating_keyboard,
-        key="rotating_keyboard_check"
-    )
-
-    cable_manager = st.checkbox(
-        "3.4 Cable Manager",
-        value=st.session_state.cable_manager,
-        key="cable_manager_check"
-    )
-
-
-with oa2:
-
-    top_tray = st.checkbox(
-        "3.5 Top Cable Tray",
-        value=st.session_state.top_cable_tray,
-        key="top_cable_tray_check"
-    )
-
-    brush_panel = st.checkbox(
-        "3.6 Brush Panel",
-        value=st.session_state.brush_panel,
-        key="brush_panel_check"
-    )
-
-
-st.session_state.rotating_keyboard = rotating
-st.session_state.cable_manager = cable_manager
-st.session_state.top_cable_tray = top_tray
-st.session_state.brush_panel = brush_panel
-
-
-# ------------------------------------------------------------
-# Update accessory quantities
-# ------------------------------------------------------------
-
-accessory_flags = {
-
-    "801223664":
-        st.session_state.rotating_keyboard,
-
-    "801075237":
-        st.session_state.cable_manager,
-
-    "801029022":
-        st.session_state.top_cable_tray,
-
-    "801075235":
-        st.session_state.brush_panel,
-}
-
-
-for part, selected in accessory_flags.items():
 
     if selected:
 
-        add_accessory(
-            part,
-            1
-        )
+        # Add selected Fire Suppression item
+        st.session_state.accessory_qty[part] = 1
+
+        fire_selected = True
 
     else:
 
-        remove_accessory(
-            part
+        st.session_state.accessory_qty.pop(
+            part,
+            None
         )
 
 
 # ------------------------------------------------------------
-# Fire suppression / camera quantities
+# AUTOMATIC FIRE SUPPRESSION SUPPORT
 # ------------------------------------------------------------
 
-# Fire
-for fire_type, part in FIRE_SUPPRESSION_PARTS.items():
+if fire_selected:
 
-    if fire_selection == fire_type:
+    for part in FIRE_SUPPRESSION_SUPPORT:
 
-        add_accessory(
+        if part in optional_lookup:
+
+            # Automatically add Brush Panel 1 U
+            st.session_state.accessory_qty[part] = 1
+
+    st.success(
+        "Fire Suppression selected → "
+        "Brush Panel 1 U automatically included."
+    )
+
+else:
+
+    # Remove Brush Panel if Fire Suppression is not selected
+    for part in FIRE_SUPPRESSION_SUPPORT:
+
+        st.session_state.accessory_qty.pop(
             part,
-            1
-        )
-
-    else:
-
-        remove_accessory(
-            part
-        )
-
-
-# Camera
-for part in CAMERA_PARTS:
-
-    if camera_selection == "Yes":
-
-        add_accessory(
-            part,
-            1
-        )
-
-    else:
-
-        remove_accessory(
-            part
+            None
         )
 
 
 # ============================================================
-# CURRENT USER CODE - REFRESH
+# CAMERA SYSTEM
 # ============================================================
 
-st.session_state.user_code = (
-    generate_user_code()
+st.subheader("📷 Camera System")
+
+st.caption(
+    "Selecting the Camera System automatically includes "
+    "the required camera, NVR, PoE, CAT 5 cable and storage."
 )
 
-st.markdown(
-    f"""
-    <div class="user-code-card">
-
-        <div class="user-code-label">
-            Current User Code
-        </div>
-
-        <div class="user-code-value">
-            {st.session_state.user_code}
-        </div>
-
-    </div>
-    """,
-    unsafe_allow_html=True
+camera_selected = st.checkbox(
+    "Enable Camera System",
+    value=any(
+        st.session_state.accessory_qty.get(part, 0) > 0
+        for part in CAMERA_PARTS
+    ),
+    key="camera_system"
 )
 
 
+if camera_selected:
+
+    # --------------------------------------------------------
+    # AUTOMATICALLY ADD CAMERA COMPONENTS
+    # --------------------------------------------------------
+
+    for part in CAMERA_PARTS:
+
+        if part in optional_lookup:
+
+            st.session_state.accessory_qty[part] = 1
+
+    st.success(
+        "Camera System selected → "
+        "all required camera components automatically included."
+    )
+
+    # --------------------------------------------------------
+    # SHOW INCLUDED COMPONENTS
+    # --------------------------------------------------------
+
+    st.markdown("**Included Camera Components:**")
+
+    for part in CAMERA_PARTS:
+
+        if part in optional_lookup:
+
+            r = optional_lookup[part]
+
+            st.write(
+                f"✓ **{part}** — {r['Description']}"
+            )
+
+else:
+
+    # Remove all camera components
+    for part in CAMERA_PARTS:
+
+        st.session_state.accessory_qty.pop(
+            part,
+            None
+        )
+
+
 # ============================================================
-# BUILD BOM
+# OTHER OPTIONAL ACCESSORIES
 # ============================================================
+
+st.subheader("Other Optional Accessories")
+
+OTHER_OPTIONAL_PARTS = [
+    "801223664",   # Rotating Keyboard tray
+    "801075237",   # 1 U Cable Manager Plastic
+    "801029022",   # MDC,42U TOP CABLE TRAY IT
+]
+
+for part in OTHER_OPTIONAL_PARTS:
+
+    if part not in optional_lookup:
+        continue
+
+    r = optional_lookup[part]
+
+    col1, col2 = st.columns(
+        [5.5, 1.8],
+        vertical_alignment="center"
+    )
+
+    with col1:
+
+        selected = st.checkbox(
+            f'{part} — {r["Description"]}',
+            value=(
+                st.session_state.accessory_qty.get(
+                    part, 0
+                ) > 0
+            ),
+            key=f"other_acc_{part}"
+        )
+
+    with col2:
+
+        if selected:
+
+            qty = st.number_input(
+                "Quantity",
+                min_value=1,
+                max_value=999,
+                step=1,
+                value=int(
+                    st.session_state.accessory_qty.get(
+                        part,
+                        1
+                    )
+                ),
+                key=f"other_qty_{part}"
+            )
+
+            st.session_state.accessory_qty[part] = qty
+
+        else:
+
+            st.session_state.accessory_qty.pop(
+                part,
+                None
+            )
+
+# ------------------------------------------------------------
+# 4 PDU selection
+# ------------------------------------------------------------
+st.header("4. PDU Selection")
+
+pdu_options = [
+    f'{r["Part Code"]} — {r["Description"]}'
+    for _, r in pdus_df.iterrows()
+]
+
+col1, col2 = st.columns([5, 1.5])
+
+with col1:
+    selected_pdu = st.selectbox(
+        "Select PDU",
+        ["None"] + pdu_options,
+        index=0
+    )
+
+with col2:
+    qty = st.number_input(
+        "Quantity",
+        min_value=1,
+        max_value=999,
+        value=1,
+        step=1,
+        key="pdu_quantity"
+    )
+
+# Reset PDU quantity dictionary
+st.session_state.pdu_qty = {}
+
+if selected_pdu != "None":
+
+    selected_index = pdu_options.index(selected_pdu)
+    selected_row = pdus_df.iloc[selected_index]
+
+    part = str(selected_row["Part Code"])
+
+    st.session_state.pdu_qty[part] = qty
+
+# ------------------------------------------------------------
+# 5 Final structure - common to both users
+# ------------------------------------------------------------
+# st.header("5. Final Structure")
+
+# bom = build_bom()
+
+# if not bom.empty:
+#     structure = bom[[
+#         "S.No.", "Component Type", "Part Code", "Description", "Quantity", "UOM"
+#     ]].copy()
+#     st.dataframe(structure, use_container_width=True, hide_index=True)
+# else:
+#     st.info("No components selected.")
+# ============================================================
+# 5. FINAL STRUCTURE
+# ============================================================
+st.header("5. Final Structure")
 
 bom = build_bom()
 
+if not bom.empty:
 
-# ============================================================
-# COST SUMMARY
-# ============================================================
+    structure = bom[
+        ["S.No.", "Part Code", "Description", "Quantity", "UOM"]
+    ].copy()
 
-base_cost, optional_cost, pdu_cost, total_cost = (
-    cost_summary(bom)
-)
+    # ========================================================
+    # SPECIAL PART CODES
+    # ========================================================
 
+    MAIN_MDC_PART = "801029209"
 
-# ============================================================
-# 5. COST SUMMARY
-# INTERNAL ONLY
-# ============================================================
+    selected_config_components = selected_components()
 
-if is_internal:
+    cooling_part_codes = set()
 
-    st.markdown(
-        '<div class="section-ribbon">5. Cost Summary — Internal Only</div>',
-        unsafe_allow_html=True
-    )
+    if not selected_config_components.empty:
+         cooling_rows = selected_config_components.tail(3)
 
-    a, b, c, d = st.columns(4)
+         cooling_part_codes = set(
+              cooling_rows["Part Code"]
+              .dropna()
+              .astype(str)
+              .str.strip()
+         )
 
-    with a:
-        price_box(
-            "Base Cost",
-            base_cost
+    # ========================================================
+    # CREATE NEW SERIAL NUMBERS
+    # ========================================================
+
+    new_serial = []
+
+    main_mdc_found = False
+    mdc_sub_no = 0
+
+    cooling_started = False
+    cooling_sub_no = 0
+
+    accessories_started = False
+    accessory_no = 3
+
+    pdu_started = False
+    pdu_no = 0
+
+    for row_index, row in structure.iterrows():
+
+        part_code = str(row["Part Code"]).strip()
+        description = str(row["Description"]).strip()
+        component_type = str(
+            bom.loc[row.name, "Component Type"]
+        ).strip()
+
+        # ----------------------------------------------------
+        # MAIN MDC TITLE
+        # ----------------------------------------------------
+
+        if (
+            not main_mdc_found
+            and "SINGLE RACK MDC" in description.upper()
+        ):
+            new_serial.append("")
+            main_mdc_found = True
+            continue
+
+        # ----------------------------------------------------
+        # MAIN MDC
+        # 801029209 -> 1
+        # ----------------------------------------------------
+
+        if part_code == MAIN_MDC_PART:
+            new_serial.append("1")
+            continue
+
+        # ----------------------------------------------------
+        # COOLING UNIT
+        # 801401725 -> 2.1
+        # 801401726 -> 2.2
+        # 801401745 -> 2.3
+        # ----------------------------------------------------
+
+        if part_code in cooling_part_codes:
+
+            cooling_started = True
+            cooling_sub_no += 1
+
+            new_serial.append(
+                f"2.{cooling_sub_no}"
+            )
+
+            continue
+
+        # ----------------------------------------------------
+        # OPTIONAL ACCESSORIES
+        # 3, 4, 5, 6...
+        # ----------------------------------------------------
+
+        if component_type == "Optional Accessory":
+
+            accessories_started = True
+
+            new_serial.append(
+                str(accessory_no)
+            )
+
+            accessory_no += 1
+
+            continue
+
+        # ----------------------------------------------------
+        # PDU
+        # Continue numbering after accessories
+        # ----------------------------------------------------
+
+        if component_type == "PDU":
+
+            pdu_started = True
+
+            # If accessories exist:
+            # continue from accessory numbering.
+            #
+            # Example:
+            # Accessories = 3, 4
+            # PDU = 5
+
+            new_serial.append(
+                str(accessory_no)
+            )
+
+            accessory_no += 1
+
+            continue
+
+        # ----------------------------------------------------
+        # MDC COMPONENTS
+        # 1.1, 1.2, 1.3 ... 1.17
+        # ----------------------------------------------------
+
+        if not cooling_started:
+
+            mdc_sub_no += 1
+
+            new_serial.append(
+                f"1.{mdc_sub_no}"
+            )
+
+            continue
+
+        # ----------------------------------------------------
+        # FALLBACK
+        # ----------------------------------------------------
+
+        new_serial.append(
+            str(accessory_no)
         )
 
-    with b:
-        price_box(
-            "Optional Cost",
-            optional_cost
+        accessory_no += 1
+
+    structure["New S.No."] = new_serial
+
+    # ========================================================
+    # HTML TABLE CSS
+    # ========================================================
+
+    html = """
+    <style>
+
+    .final-structure-table {
+        width: 100%;
+        border-collapse: collapse;
+        font-family: Arial, sans-serif;
+        font-size: 14px;
+        border: 1px solid #D9E1E8;
+        border-radius: 8px;
+        overflow: hidden;
+    }
+
+    .final-structure-table th {
+        background-color: #F4F6F8;
+        color: #555555;
+        font-weight: 600;
+        text-align: left;
+        padding: 12px 10px;
+        border-bottom: 1px solid #D9E1E8;
+    }
+
+    .final-structure-table td {
+        padding: 11px 10px;
+        border-bottom: 1px solid #E5E7EB;
+        color: #333333;
+        vertical-align: middle;
+    }
+
+    /* ======================================================
+       MAIN MDC TITLE
+       Dark Blue + Centered
+       ====================================================== */
+
+    .main-mdc-row td {
+        background-color: #003B71;
+        color: white !important;
+        font-weight: 700;
+        font-size: 16px;
+        text-align: center !important;
+        padding: 15px 10px;
+    }
+
+    /* ======================================================
+       SECTION HEADINGS
+       Eaton Blue + Centered
+       ====================================================== */
+
+    .section-heading td {
+        background-color: #005EB8;
+        color: white !important;
+        font-weight: 700;
+        font-size: 15px;
+        text-align: center !important;
+        padding: 12px 14px;
+    }
+
+    /* ======================================================
+       COLUMN ALIGNMENT
+       ====================================================== */
+
+    .serial {
+        width: 7%;
+        text-align: center !important;
+    }
+
+    .part-code {
+        width: 15%;
+    }
+
+    .description {
+        width: 58%;
+    }
+
+    .quantity {
+        width: 10%;
+        text-align: center !important;
+    }
+
+    .uom {
+        width: 10%;
+        text-align: center !important;
+    }
+
+    </style>
+
+    <table class="final-structure-table">
+
+        <thead>
+            <tr>
+                <th class="serial">S.No.</th>
+                <th class="part-code">Part Code</th>
+                <th class="description">Description</th>
+                <th class="quantity">Qty</th>
+                <th class="uom">UOM</th>
+            </tr>
+        </thead>
+
+        <tbody>
+    """
+
+    # ========================================================
+    # SECTION FLAGS
+    # ========================================================
+
+    cooling_heading_added = False
+    accessories_heading_added = False
+    pdu_heading_added = False
+
+    # ========================================================
+    # ADD TABLE ROWS
+    # ========================================================
+
+    for row_index, row in structure.iterrows():
+
+        part_code = str(row["Part Code"]).strip()
+        description = str(row["Description"]).strip()
+        quantity = str(row["Quantity"]).strip()
+        uom = str(row["UOM"]).strip()
+        serial_no = str(row["New S.No."]).strip()
+
+        component_type = str(
+            bom.loc[row.name, "Component Type"]
+        ).strip()
+
+        # ----------------------------------------------------
+        # MAIN MDC TITLE
+        # ----------------------------------------------------
+
+        if (
+            serial_no == ""
+            and "SINGLE RACK MDC" in description.upper()
+        ):
+
+            html += f"""
+            <tr class="main-mdc-row">
+                <td colspan="5">
+                    {description}
+                </td>
+            </tr>
+            """
+
+            continue
+
+        # ----------------------------------------------------
+        # COOLING UNIT HEADING
+        # ----------------------------------------------------
+
+        if (
+            part_code in cooling_part_codes
+            and not cooling_heading_added
+        ):
+
+            html += """
+            <tr class="section-heading">
+                <td colspan="5">
+                    COOLING UNIT
+                </td>
+            </tr>
+            """
+
+            cooling_heading_added = True
+        
+
+        # ----------------------------------------------------
+        # OTHER ACCESSORIES HEADING
+        # ----------------------------------------------------
+
+        if (
+            component_type == "Optional Accessory"
+            and not accessories_heading_added
+        ):
+
+            html += """
+            <tr class="section-heading">
+                <td colspan="5">
+                    OTHER ACCESSORIES
+                </td>
+            </tr>
+            """
+
+            accessories_heading_added = True
+
+        # ----------------------------------------------------
+        # PDU HEADING
+        # ----------------------------------------------------
+
+        if (
+            component_type == "PDU"
+            and not pdu_heading_added
+        ):
+
+            html += """
+            <tr class="section-heading">
+                <td colspan="5">
+                    PDU
+                </td>
+            </tr>
+            """
+
+            pdu_heading_added = True
+
+        # ----------------------------------------------------
+        # PART CODE
+        # ----------------------------------------------------
+
+        display_part_code = (
+            ""
+            if part_code.lower() == "nan"
+            else part_code
         )
 
-    with c:
-        price_box(
-            "PDU Cost",
-            pdu_cost
-        )
+        # ----------------------------------------------------
+        # NORMAL ROW
+        # ----------------------------------------------------
 
-    with d:
-        price_box(
-            "Total Cost",
-            total_cost
-        )
+        html += f"""
+        <tr>
+            <td class="serial">{serial_no}</td>
+            <td class="part-code">{display_part_code}</td>
+            <td class="description">{description}</td>
+            <td class="quantity">{quantity}</td>
+            <td class="uom">{uom}</td>
+        </tr>
+        """
 
+    html += """
+        </tbody>
+    </table>
+    """
 
-# ============================================================
-# 6. COST TO PRICE CONVERSION
-# INTERNAL ONLY
-# ============================================================
+    # ========================================================
+    # DISPLAY HTML TABLE
+    # ========================================================
+
+    st.html(html)
+
+else:
+
+    st.info("No components selected.")
+
+# ------------------------------------------------------------
+# Cost + selling price - internal only
+# ------------------------------------------------------------
+base_cost, optional_cost, pdu_cost, total_cost = cost_summary(bom)
 
 margin_pct = st.session_state.margin_pct
 freight = st.session_state.freight
 installation = st.session_state.installation
 warranty_pct = st.session_state.warranty_pct
 
-
 if is_internal:
-
-    st.markdown(
-        '<div class="section-ribbon">6. Cost to Price Conversion — Internal Only</div>',
-        unsafe_allow_html=True
-    )
-
-    p1, p2, p3, p4 = st.columns(4)
-
-    with p1:
-
-        margin_pct = st.number_input(
-            "Margin (%)",
-            min_value=0.0,
-            max_value=99.0,
-            value=float(
-                st.session_state.margin_pct
-            ),
-            step=0.5
-        )
-
-        st.session_state.margin_pct = (
-            margin_pct
-        )
-
-    with p2:
-
-        freight = st.number_input(
-            "Freight",
-            min_value=0.0,
-            value=float(
-                st.session_state.freight
-            ),
-            step=500.0
-        )
-
-        st.session_state.freight = (
-            freight
-        )
-
-    with p3:
-
-        installation = st.number_input(
-            "Installation",
-            min_value=0.0,
-            value=float(
-                st.session_state.installation
-            ),
-            step=500.0
-        )
-
-        st.session_state.installation = (
-            installation
-        )
-
-    with p4:
-
-        warranty_pct = st.number_input(
-            "Warranty (%)",
-            min_value=0.0,
-            max_value=100.0,
-            value=float(
-                st.session_state.warranty_pct
-            ),
-            step=0.5
-        )
-
-        st.session_state.warranty_pct = (
-            warranty_pct
-        )
-
-
-margin_price = (
-    total_cost
-    /
-    (1 - margin_pct / 100)
-    if margin_pct < 100
-    else 0
-)
-
-final_selling_price = (
-    margin_price
-    + freight
-    + installation
-)
-
-warranty_amount = (
-    margin_price
-    * warranty_pct
-    / 100
-)
-
-
-if is_internal:
+    st.header("6. Cost Summary — Internal Only")
 
     a, b, c, d = st.columns(4)
-
     with a:
-        price_box(
-            "Margin Price",
-            margin_price
-        )
-
+        price_box("Base Cost", base_cost)
     with b:
-        price_box(
-            "After Freight",
-            margin_price + freight
-        )
-
+        price_box("Optional Cost", optional_cost)
     with c:
-        price_box(
-            "Final Selling Price",
-            final_selling_price
-        )
-
+        price_box("PDU Cost", pdu_cost)
     with d:
-        price_box(
-            "Warranty Amount",
-            warranty_amount
+        price_box("Total Cost", total_cost)
+
+    st.header("7. Cost to Selling Price — Internal Only")
+
+    p1, p2, p3, p4 = st.columns(4)
+    with p1:
+        margin_pct = st.number_input(
+            "Margin (%)", 0.0, 99.0,
+            st.session_state.margin_pct, 0.5
         )
+        st.session_state.margin_pct = margin_pct
+    with p2:
+        freight = st.number_input(
+            "Freight", 0.0,
+            value=st.session_state.freight, step=500.0
+        )
+        st.session_state.freight = freight
+    with p3:
+        installation = st.number_input(
+            "Installation", 0.0,
+            value=st.session_state.installation, step=500.0
+        )
+        st.session_state.installation = installation
+    with p4:
+        warranty_pct = st.number_input(
+            "Warranty (%)", 0.0, 100.0,
+            st.session_state.warranty_pct, 0.5
+        )
+        st.session_state.warranty_pct = warranty_pct
 
+    margin_price = total_cost / (1 - margin_pct / 100) if margin_pct < 100 else 0
+    final_selling_price = margin_price + freight + installation
+    warranty_amount = margin_price * warranty_pct / 100
 
-# ============================================================
-# FINAL BOQ WITH SELLING PRICE
-# ============================================================
+    a, b, c, d = st.columns(4)
+    with a:
+        price_box("Margin Price", margin_price)
+    with b:
+        price_box("After Freight", margin_price + freight)
+    with c:
+        price_box("Final Selling Price", final_selling_price)
+    with d:
+        price_box("Warranty Amount", warranty_amount)
 
-bom_with_price, margin_price, final_selling_price = (
-    add_selling_prices(
-        bom,
-        total_cost,
-        margin_pct,
-        freight,
-        installation
-    )
-)
+# ------------------------------------------------------------
+# 8 Final BOM
+# ------------------------------------------------------------
+st.header("8. Final BOM")
 
-
-# ============================================================
-# 7. FINAL BOQ
-# ============================================================
-
-st.markdown(
-    '<div class="section-ribbon">7. Final BOQ</div>',
-    unsafe_allow_html=True
-)
-
-
-if not bom_with_price.empty:
-
-    selected_name = configuration_display_name(
-        st.session_state.configuration
-    )
-
-    st.markdown(
-        f"""
-        <div class="selection-card">
-
-            <div class="selection-label">
-                SELECTED CONFIGURATION
-            </div>
-
-            <div class="selection-value">
-                {selected_name}
-            </div>
-
-        </div>
-        """,
-        unsafe_allow_html=True
+if not bom.empty:
+    bom_with_price, margin_price, final_selling_price = add_selling_prices(
+        bom, total_cost, margin_pct, freight, installation
     )
 
-    st.markdown(
-        final_boq_html(
-            bom_with_price
-        ),
-        unsafe_allow_html=True
+    display = bom_with_price[[
+        "S.No.", "Component Type", "Part Code", "Description", "Quantity",
+        "UOM", "Unit Price", "Total Price"
+    ]].copy()
+
+    display["Unit Price"] = display["Unit Price"].apply(
+        lambda x: money(float(x)) if pd.notna(x) else "N/A"
+    )
+    display["Total Price"] = display["Total Price"].apply(
+        lambda x: money(float(x)) if pd.notna(x) else "N/A"
     )
 
+    st.dataframe(display, use_container_width=True, hide_index=True)
+
+    known = bom_with_price["Total Price"].dropna().sum()
+    price_box("BOM Selling Value", float(known))
+
+    if not is_internal:
+        st.caption("Sales view contains selling prices only. Internal unit cost and total cost are not displayed.")
 else:
-
-    st.info(
-        "No components available for the selected configuration."
-    )
-
-
-# ============================================================
-# FINAL SELLING PRICE + DOWNLOADS
-# ============================================================
-
-st.markdown(
-    "<br>",
-    unsafe_allow_html=True
-)
-
-download_left, download_excel, download_pdf = st.columns(
-    [2.2, 1.2, 1.2],
-    gap="small"
-)
-
-
-with download_left:
-
-    price_box(
-        "Final Selling Price",
-        final_selling_price
-    )
-
-
-customer_ready = (
-    bool(
-        st.session_state.customer_name
-        and
-        st.session_state.customer_name.strip()
-    )
-)
-
+    bom_with_price = bom
+    st.info("No BOM available.")
 
 # ------------------------------------------------------------
-# Export preparation
+# 9 Excel
 # ------------------------------------------------------------
+st.header("9. Excel Download")
 
-internal_cost_data = [
+if not bom.empty:
+    internal_cost_data = [
+        ["Base Cost", base_cost],
+        ["Optional Cost", optional_cost],
+        ["PDU Cost", pdu_cost],
+        ["Total Cost", total_cost],
+        ["Margin %", margin_pct],
+        ["Margin Price", margin_price if is_internal else 0],
+        ["Freight", freight if is_internal else 0],
+        ["Installation", installation if is_internal else 0],
+        ["Final Selling Price", final_selling_price if is_internal else 0],
+        ["Warranty %", warranty_pct if is_internal else 0],
+        ["Warranty Amount", (margin_price * warranty_pct / 100) if is_internal else 0],
+    ]
 
-    ["Base Cost", base_cost],
-
-    ["Optional Cost", optional_cost],
-
-    ["PDU Cost", pdu_cost],
-
-    ["Total Cost", total_cost],
-
-    ["Margin %", margin_pct],
-
-    ["Margin Price", margin_price],
-
-    ["Freight", freight],
-
-    ["Installation", installation],
-
-    ["Final Selling Price",
-     final_selling_price],
-
-    ["Warranty %",
-     warranty_pct],
-
-    ["Warranty Amount",
-     warranty_amount],
-]
-
-
-sales_excel = None
-internal_excel = None
-sales_pdf = None
-internal_pdf = None
-
-
-if customer_ready and not bom_with_price.empty:
-
-    sales_excel = excel_bytes(
+    # Sales Excel is always safe for both roles.
+    sales_file = excel_bytes(
         internal=False,
-        bom=bom_with_price
-    )
-
-    sales_pdf = pdf_bytes(
-        bom_with_price,
-        internal=False
+        bom=bom_with_price,
+        cost_data=None,
     )
 
     if is_internal:
+        st.success("Internal MDC user: both Excel versions are available.")
 
-        internal_excel = excel_bytes(
-            internal=True,
-            bom=bom_with_price,
-            cost_data=internal_cost_data
-        )
-
-        internal_pdf = pdf_bytes(
-            bom_with_price,
-            internal=True,
-            cost_data=internal_cost_data
-        )
-
-
-with download_excel:
-
-    if not customer_ready:
-
-        st.button(
-            "⬇ Excel",
-            disabled=True,
-            use_container_width=True
-        )
-
-    elif is_internal:
-
-        st.download_button(
-            "⬇ Internal Excel",
-            data=internal_excel,
-            file_name=(
-                f"{st.session_state.user_code}"
-                "_Internal_BOQ.xlsx"
-            ),
-            mime=(
-                "application/vnd.openxmlformats-officedocument."
-                "spreadsheetml.sheet"
-            ),
-            use_container_width=True
-        )
-
-    else:
-
-        st.download_button(
-            "⬇ Excel",
-            data=sales_excel,
-            file_name=(
-                f"{st.session_state.user_code}"
-                "_Final_BOQ.xlsx"
-            ),
-            mime=(
-                "application/vnd.openxmlformats-officedocument."
-                "spreadsheetml.sheet"
-            ),
-            use_container_width=True
-        )
-
-
-with download_pdf:
-
-    if not customer_ready:
-
-        st.button(
-            "⬇ PDF",
-            disabled=True,
-            use_container_width=True
-        )
-
-    elif is_internal:
-
-        st.download_button(
-            "⬇ Internal PDF",
-            data=internal_pdf,
-            file_name=(
-                f"{st.session_state.user_code}"
-                "_Internal_BOQ.pdf"
-            ),
-            mime="application/pdf",
-            use_container_width=True
-        )
-
-    else:
-
-        st.download_button(
-            "⬇ PDF",
-            data=sales_pdf,
-            file_name=(
-                f"{st.session_state.user_code}"
-                "_Final_BOQ.pdf"
-            ),
-            mime="application/pdf",
-            use_container_width=True
-        )
-
-
-if not customer_ready:
-
-    st.markdown(
-        """
-        <div class="download-note">
-            Customer Name is mandatory before downloading
-            the Excel or PDF.
-        </div>
-        """,
-        unsafe_allow_html=True
-    )
-
-
-# ============================================================
-# 8. SAVE CONFIGURATION
-# ============================================================
-
-if is_internal:
-
-    st.markdown(
-        '<div class="section-ribbon">8. Save Configuration</div>',
-        unsafe_allow_html=True
-    )
-
-    save_col1, save_col2 = st.columns(
-        [1.5, 5]
-    )
-
-    with save_col1:
-
-        if st.button(
-            "💾 Save Configuration",
-            use_container_width=True,
-            type="primary"
-        ):
-
-            if not customer_ready:
-
-                st.error(
-                    "Customer Name is mandatory."
-                )
-
-            elif bom_with_price.empty:
-
-                st.error(
-                    "No BOQ available to save."
-                )
-
-            else:
-
-                save_configuration(
-                    user_code=
-                        st.session_state.user_code,
-
+        col1, col2 = st.columns(2)
+        with col1:
+            st.download_button(
+                "⬇️ Download Internal Cost Excel",
+                data=excel_bytes(
+                    internal=True,
                     bom=bom_with_price,
-
-                    base_cost=base_cost,
-                    optional_cost=optional_cost,
-                    pdu_cost=pdu_cost,
-                    total_cost=total_cost,
-
-                    margin_pct=margin_pct,
-                    freight=freight,
-                    installation=installation,
-                    warranty_pct=warranty_pct,
-
-                    margin_price=margin_price,
-                    final_selling_price=
-                        final_selling_price,
-                    warranty_amount=
-                        warranty_amount,
-                )
-
-                st.session_state.configuration_saved = (
-                    True
-                )
-
-                st.success(
-                    "Configuration saved successfully."
-                )
-
-
+                    cost_data=internal_cost_data,
+                ),
+                file_name="MDC_Internal_Cost.xlsx",
+                mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                use_container_width=True,
+            )
+        with col2:
+            st.download_button(
+                "⬇️ Download Sales Excel",
+                data=sales_file,
+                file_name="MDC_Sales_Output.xlsx",
+                mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                use_container_width=True,
+            )
+    else:
+        st.download_button(
+            "⬇️ Download Sales Excel",
+            data=sales_file,
+            file_name="MDC_Sales_Output.xlsx",
+            mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+            use_container_width=True,
+        )
+        
 # ============================================================
-# 9. CONFIGURATION HISTORY
+# 10. SAVE CONFIGURATION
 # ============================================================
 
-st.markdown(
-    '<div class="section-ribbon">9. Configuration History</div>',
-    unsafe_allow_html=True
+st.header("10. Save Configuration")
+
+st.caption(
+    "Save the current MDC configuration for future tracking and reference."
 )
 
+save_col1, save_col2 = st.columns([2, 5])
+
+with save_col1:
+
+    if st.button(
+        "💾 Save Configuration",
+        use_container_width=True,
+        type="primary"
+    ):
+
+        # Calculate selling price
+        current_margin_price = (
+            total_cost / (1 - margin_pct / 100)
+            if margin_pct < 100
+            else 0
+        )
+
+        current_final_price = (
+            current_margin_price
+            + freight
+            + installation
+        )
+
+        current_warranty_amount = (
+            current_margin_price
+            * warranty_pct
+            / 100
+        )
+
+        save_configuration(
+            configuration_id=st.session_state.configuration_id,
+
+            bom=bom_with_price,
+
+            base_cost=base_cost,
+            optional_cost=optional_cost,
+            pdu_cost=pdu_cost,
+            total_cost=total_cost,
+
+            margin_pct=margin_pct,
+            freight=freight,
+            installation=installation,
+            warranty_pct=warranty_pct,
+
+            margin_price=current_margin_price,
+            final_selling_price=current_final_price,
+            warranty_amount=current_warranty_amount,
+        )
+
+        st.session_state.configuration_saved = True
+
+        st.success(
+            f"Configuration {st.session_state.configuration_id} saved successfully."
+        )
+st.divider()
+st.caption(
+    "MDC Solution V1 | Single Rack data loaded from the supplied 01.09.2026 BOQ | "
+    "Multirack configurations are XXX placeholders for future updates."
+)
+# ============================================================
+# 11. CONFIGURATION HISTORY
+# INTERNAL USERS ONLY
+# ============================================================
 
 if is_internal:
 
-    conn = sqlite3.connect(
-        TRACKING_DB
-    )
+    st.header("11. Configuration History")
+
+    conn = sqlite3.connect(TRACKING_DB)
 
     history_df = pd.read_sql_query(
         """
         SELECT
-            user_code AS "User Code",
-            substr(created_at, 1, 10) AS "Date",
-            customer_name AS "Customer Name"
+            configuration_id AS "Configuration ID",
+            created_at AS "Created At",
+            customer_name AS "Customer",
+            customer_place AS "Place",
+            mdc_type AS "MDC Type",
+            configuration AS "Configuration",
+            final_selling_price AS "Final Selling Price"
         FROM configurations
         ORDER BY id DESC
         """,
@@ -3702,6 +1760,11 @@ if is_internal:
 
     if not history_df.empty:
 
+        history_df["Final Selling Price"] = (
+            history_df["Final Selling Price"]
+            .apply(money)
+        )
+
         st.dataframe(
             history_df,
             use_container_width=True,
@@ -3711,24 +1774,5 @@ if is_internal:
     else:
 
         st.info(
-            "No configuration history available."
+            "No saved configurations available yet."
         )
-
-else:
-
-    st.caption(
-        "Configuration history is available only "
-        "to authenticated Internal – MDC users."
-    )
-
-
-# ============================================================
-# FOOTER
-# ============================================================
-
-st.divider()
-
-st.caption(
-    "MDC Solution | Eaton MDC Solution Configurator | "
-    f"Current Date: {datetime.now().strftime('%d-%m-%Y')}"
-)
