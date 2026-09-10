@@ -1451,10 +1451,21 @@ if not bom.empty:
         st.session_state.installation
     )
 
+    # structure = bom[
+    #     ["S.No.", "Part Code", "Description", "Quantity", "UOM", "Unit Price",
+    #     "Total Price"]
+    # ].copy()
     structure = bom[
-        ["S.No.", "Part Code", "Description", "Quantity", "UOM", "Unit Price",
-        "Total Price"]
-    ].copy()
+    [
+        "S.No.",
+        "Part Code",
+        "Description",
+        "Quantity",
+        "UOM",
+        "Unit Price",
+        "Total Price"
+    ]
+].copy()
 
     # ========================================================
     # SPECIAL PART CODES
