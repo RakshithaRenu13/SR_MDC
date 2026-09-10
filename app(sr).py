@@ -1559,20 +1559,16 @@ is_internal = (
 st.markdown(
     """
     <div class="title-ribbon">
-
         <div class="title-main">
             Eaton MDC Solution Configurator
         </div>
-
         <div class="title-sub">
             Modular Data Center Solution Configuration &amp; Pricing
         </div>
-
     </div>
     """,
     unsafe_allow_html=True,
 )
-
 
 # ============================================================
 # USER CODE / USER COUNT / DATE
@@ -1586,96 +1582,55 @@ current_date = datetime.now().strftime(
     "%d-%m-%Y"
 )
 
+st.markdown(
+    f"""
+    <div style="
+        display:grid;
+        grid-template-columns:1.45fr 1fr 1fr 1fr;
+        gap:10px;
+        margin-bottom:8px;
+    ">
 
-m1, m2, m3, m4 = st.columns(
-    [
-        1.45,
-        1.0,
-        1.0,
-        1.0
-    ]
-)
-
-
-with m1:
-
-    st.markdown(
-        f"""
         <div class="meta-card">
-
             <div class="meta-label">
                 User Code
             </div>
-
             <div class="meta-value">
                 {next_code}
             </div>
-
         </div>
-        """,
-        unsafe_allow_html=True,
-    )
 
-
-with m2:
-
-    st.markdown(
-        f"""
         <div class="meta-card">
-
             <div class="meta-label">
                 User Count
             </div>
-
             <div class="meta-value">
                 {download_count}
             </div>
-
         </div>
-        """,
-        unsafe_allow_html=True,
-    )
 
-
-with m3:
-
-    st.markdown(
-        f"""
         <div class="meta-card">
-
             <div class="meta-label">
                 Date
             </div>
-
             <div class="meta-value">
                 {current_date}
             </div>
-
         </div>
-        """,
-        unsafe_allow_html=True,
-    )
 
-
-with m4:
-
-    st.markdown(
-        f"""
         <div class="meta-card">
-
             <div class="meta-label">
                 Access
             </div>
-
             <div class="meta-value">
                 {"Internal" if is_internal else "Sales"}
             </div>
-
         </div>
-        """,
-        unsafe_allow_html=True,
-    )
 
+    </div>
+    """,
+    unsafe_allow_html=True,
+)
 
 # ============================================================
 # CUSTOMER DETAILS
