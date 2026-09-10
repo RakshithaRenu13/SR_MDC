@@ -1,5 +1,8 @@
 import os
-import sqlite3
+import sqlite3File "/mount/src/sr_mdc/app(sr).py", line 1884
+     st.html(html)
+                  ^
+IndentationError: unindent does not match any outer indentation level
 from io import BytesIO
 from datetime import datetime
 
@@ -1880,10 +1883,9 @@ if not bom.empty:
         </tbody>
     </table>
     """
-
-   st.html(html)
+    st.html(html)
 else:
-st.info("no components needed")
+    st.info("no components needed")
 
 # ------------------------------------------------------------
 # FINAL SELLING PRICE
