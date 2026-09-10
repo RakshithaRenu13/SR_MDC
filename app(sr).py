@@ -1818,196 +1818,232 @@ if cfg is not None:
 
 
 # ============================================================
-# 2. PDU SELECTION
+# PDU SELECTION
 # ============================================================
 
-ribbon(
-    "2. PDU Selection"
-)
-
+ribbon("PDU")
 
 pdu_type = st.radio(
     "PDU Type",
-    [
-        "Basic",
-        "Metered",
-        "Switched",
-        "None"
-    ],
-
+    ["Basic", "Metered", "Switched", "None"],
     horizontal=True,
-
-    index=[
-        "Basic",
-        "Metered",
-        "Switched",
-        "None"
-    ].index(
-        st.session_state.get(
-            "pdu_type",
-            "Basic"
-        )
+    index=["Basic", "Metered", "Switched", "None"].index(
+        st.session_state.pdu_type
     ),
-
-    key="pdu_type_radio",
 )
 
-
-if (
-    pdu_type
-    != st.session_state.pdu_type
-):
-
-    st.session_state.pdu_type = pdu_type
-
-    st.session_state.pdu_qty = {}
-
-    st.session_state.pdu_selected_part = (
-        "None"
-    )
-
-    st.rerun()
-
+# Store selected PDU type
+st.session_state.pdu_type = pdu_type
 
 # ------------------------------------------------------------
-# Filter PDU components from Excel
+# PDU DATA
 # ------------------------------------------------------------
 
-pdu_filtered = pdus_df.copy()
+PDU_OPTIONS = {
+    "Basic": [
+        (
+            "802001004",
+            "B-PDU,ZU 20,32A 1P IEC309 20,0 230/230V",
+            20,
+            0,
+        ),
+        (
+            "802001005",
+            "B-PDU,ZU 30,32A 1P IEC309 24,6 230/230V",
+            24,
+            6,
+        ),
+        (
+            "802001006",
+            "B-PDU,ZU 42,32A 1P IEC309 36,6 230/230V",
+            36,
+            6,
+        ),
+        (
+            "802001014",
+            "B-PDU,ZU 12,16A 1P IEC309 9,3 230/230V",
+            9,
+            3,
+        ),
+    ],
 
+    "Metered": [
+        (
+            "802002003",
+            "M-PDU,ZU 24,16A 1P IEC309 20,4 230/230V",
+            20,
+            4,
+        ),
+        (
+            "802002005",
+            "M-PDU,ZU 24,32A 1P IEC309 20,4 230/230V",
+            20,
+            4,
+        ),
+        (
+            "802002006",
+            "M-PDU,ZU 34,32A 1P IEC309 28,6 230/230V",
+            28,
+            6,
+        ),
+        (
+            "802002007",
+            "M-PDU,ZU 42,32A 1P IEC309 36,6 230/230V",
+            36,
+            6,
+        ),
+        (
+            "802002012",
+            "M-PDU,ZU 34,32A 1P IEC309 28,6 230/230 W",
+            28,
+            6,
+        ),
+    ],
 
-if (
-    pdu_type != "None"
-    and "Type" in pdu_filtered.columns
-):
+    "Switched": [
+        (
+            "801601216",
+            "S-PDU ,ZU42,32A 1P IEC309 36,6 230/230V",
+            36,
+            6,
+        ),
+        (
+            "802003002",
+            "S-PDU,ZU 16,16A 1P C20 12,4 230/230V",
+            12,
+            4,
+        ),
+        (
+            "802003004",
+            "S-PDU,ZU 24,16A 1P IEC309 20,4 230/230V",
+            20,
+            4,
+        ),
+        (
+            "802003006",
+            "S-PDU,ZU 24,32A 1P IEC309 20,4 230/400V",
+            20,
+            4,
+        ),
+        (
+            "802003007",
+            "S-PDU,ZU 32,32A 1P IEC309 24,8 230/230V",
+            24,
+            8,
+        ),
+        (
+            "802003008",
+            "S-PDU,ZU 44,32A 1P IEC309 34,6 230/230V",
+            34,
+            6,
+        ),
+    ],
+}
 
-    pdu_filtered = pdu_filtered[
-        pdu_filtered["Type"]
-        .astype(str)
-        .str.strip()
-        .str.lower()
-        ==
-        pdu_type.lower()
-    ].copy()
-
+# ------------------------------------------------------------
+# RESET WHEN NONE
+# ------------------------------------------------------------
 
 if pdu_type == "None":
 
+    st.session_state.pdu_selected_part = "None"
     st.session_state.pdu_qty = {}
 
-    st.session_state.pdu_selected_part = (
-        "None"
-    )
+    st.info("No PDU selected.")
 
 else:
 
+    options = PDU_OPTIONS[pdu_type]
+
+    # Create dropdown labels
     pdu_labels = [
-
-        f'{clean_part(r["Part Code"])} — '
-        f'{r["Description"]}'
-
-        for _, r
-        in pdu_filtered.iterrows()
+        f"{part} — {description}"
+        for part, description, qty1, qty2 in options
     ]
 
-
-    pc1, pc2 = st.columns(
-        [5.5, 1.1]
+    # Existing selection
+    current_part = st.session_state.get(
+        "pdu_selected_part",
+        "None"
     )
 
+    current_index = 0
 
-    with pc1:
+    for i, item in enumerate(options):
+        if item[0] == current_part:
+            current_index = i
+            break
 
-        if pdu_labels:
+    # --------------------------------------------------------
+    # DROPDOWN + QUANTITY
+    # --------------------------------------------------------
 
-            selected_pdu = st.selectbox(
+    pdu_col, qty_col = st.columns([5, 1])
 
-                "Select PDU",
+    with pdu_col:
 
-                ["None"] + pdu_labels,
+        selected_label = st.selectbox(
+            "Select PDU",
+            pdu_labels,
+            index=current_index,
+            key="pdu_dropdown",
+        )
 
-                index=(
+    # Extract selected PDU information
+    selected_index = pdu_labels.index(selected_label)
 
-                    (
-                        ["None"] + pdu_labels
-                    ).index(
-                        st.session_state
-                        .pdu_selected_part
-                    )
+    selected_part = options[selected_index][0]
+    selected_description = options[selected_index][1]
+    qty_1 = options[selected_index][2]
+    qty_2 = options[selected_index][3]
 
-                    if
-                    st.session_state
-                    .pdu_selected_part
-                    in
-                    (
-                        ["None"] + pdu_labels
-                    )
+    st.session_state.pdu_selected_part = selected_part
 
-                    else 0
-                ),
+    # --------------------------------------------------------
+    # QUANTITY
+    # --------------------------------------------------------
 
-                key="pdu_dropdown",
-            )
+    with qty_col:
 
-        else:
+        current_qty = st.session_state.pdu_qty.get(
+            selected_part,
+            1
+        )
 
-            selected_pdu = "None"
-
-            st.selectbox(
-                "Select PDU",
-                [
-                    "No PDU components available"
-                ],
-                disabled=True
-            )
-
-
-    with pc2:
-
-        qty = st.number_input(
+        selected_qty = st.number_input(
             "Qty",
-
             min_value=1,
-
             max_value=999,
-
-            value=1,
-
+            value=int(current_qty),
             step=1,
-
-            key="pdu_quantity",
+            key=f"pdu_qty_{selected_part}",
         )
 
+    st.session_state.pdu_qty = {
+        selected_part: int(selected_qty)
+    }
 
-    st.session_state.pdu_qty = {}
+    # --------------------------------------------------------
+    # SELECTED PDU DETAILS
+    # --------------------------------------------------------
 
-    st.session_state.pdu_selected_part = (
-        selected_pdu
+    st.markdown(
+        f"""
+        <div style="
+            margin-top:8px;
+            padding:8px 12px;
+            background:#EAF5FC;
+            border:1px solid #D6E4EE;
+            border-radius:6px;
+            font-size:13px;
+        ">
+            <b>{selected_part}</b>
+            &nbsp; — &nbsp;
+            {selected_description}
+        </div>
+        """,
+        unsafe_allow_html=True,
     )
-
-
-    if selected_pdu != "None":
-
-        selected_index = (
-            pdu_labels.index(
-                selected_pdu
-            )
-        )
-
-        selected_row = (
-            pdu_filtered.iloc[
-                selected_index
-            ]
-        )
-
-        part = clean_part(
-            selected_row["Part Code"]
-        )
-
-        st.session_state.pdu_qty[
-            part
-        ] = qty
-
 
 # ============================================================
 # 3. OTHER ACCESSORIES
