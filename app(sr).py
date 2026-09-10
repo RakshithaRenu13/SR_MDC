@@ -1575,53 +1575,36 @@ st.markdown(
 # ============================================================
 
 download_count = get_download_count()
-
 next_code = current_user_code()
-
-current_date = datetime.now().strftime(
-    "%d-%m-%Y"
-)
+current_date = datetime.now().strftime("%d-%m-%Y")
 
 st.markdown(
     f"""
     <div style="
-        display:grid;
-        grid-template-columns:1.45fr 1fr 1fr 1fr;
-        gap:10px;
-        margin-bottom:8px;
+        display: grid;
+        grid-template-columns: 1.45fr 1fr 1fr 1fr;
+        gap: 10px;
+        margin-bottom: 8px;
+        width: 100%;
     ">
 
         <div class="meta-card">
-            <div class="meta-label">
-                User Code
-            </div>
-            <div class="meta-value">
-                {next_code}
-            </div>
+            <div class="meta-label">User Code</div>
+            <div class="meta-value">{next_code}</div>
         </div>
 
         <div class="meta-card">
-            <div class="meta-label">
-                User Count
-            </div>
-            <div class="meta-value">
-                {download_count}
-            </div>
+            <div class="meta-label">User Count</div>
+            <div class="meta-value">{download_count}</div>
         </div>
 
         <div class="meta-card">
-            <div class="meta-label">
-                Date
-            </div>
-            <div class="meta-value">
-                {current_date}
-            </div>
+            <div class="meta-label">Date</div>
+            <div class="meta-value">{current_date}</div>
         </div>
 
         <div class="meta-card">
-            <div class="meta-label">
-                Access
-            </div>
+            <div class="meta-label">Access</div>
             <div class="meta-value">
                 {"Internal" if is_internal else "Sales"}
             </div>
@@ -1631,7 +1614,6 @@ st.markdown(
     """,
     unsafe_allow_html=True,
 )
-
 # ============================================================
 # CUSTOMER DETAILS
 # NOT NUMBERED - COMPACT TOP AREA
