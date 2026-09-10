@@ -1440,7 +1440,9 @@ bom = build_bom()
 
 if not bom.empty:
 
+    # --------------------------------------------------------
     # Calculate selling prices for Final BOQ
+    # --------------------------------------------------------
     base_cost, optional_cost, pdu_cost, total_cost = cost_summary(bom)
 
     bom_with_price, _, _ = add_selling_prices(
@@ -1451,22 +1453,17 @@ if not bom.empty:
         st.session_state.installation
     )
 
-    # structure = bom[
-    #     ["S.No.", "Part Code", "Description", "Quantity", "UOM", "Unit Price",
-    #     "Total Price"]
-    # ].copy()
-    structure = bom[
-    [
-        "S.No.",
-        "Part Code",
-        "Description",
-        "Quantity",
-        "UOM",
-        "Unit Price",
-        "Total Price"
-    ]
-].copy()
-
+    structure = bom_with_price[
+        [
+            "S.No.",
+            "Part Code",
+            "Description",
+            "Quantity",
+            "UOM",
+            "Unit Price",
+            "Total Price"
+        ]
+    ].copy()
     # ========================================================
     # SPECIAL PART CODES
     # ========================================================
