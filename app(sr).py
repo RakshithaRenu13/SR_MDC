@@ -1153,7 +1153,7 @@ for _, r in accessories_df.iterrows():
 # FIRE SUPPRESSION
 # ============================================================
 
-st.subheader("Fire Suppression")
+st.subheader("3.1 Fire Suppression")
 
 fire_options = {
     "None": None,
@@ -1179,79 +1179,104 @@ fire_selection = st.selectbox(
 for part in FIRE_SUPPRESSION_PARTS:
     st.session_state.accessory_qty.pop(part, None)
 
-fire_selected = False
-
 # Add only the selected type
 selected_fire_part = fire_options[fire_selection]
 
 if selected_fire_part:
     st.session_state.accessory_qty[selected_fire_part] = 1
-    fire_selected = True
+
+# # ============================================================
+# # CAMERA SYSTEM
+# # ============================================================
+
+# st.subheader("📷 Camera System")
+
+# st.caption(
+#     "Selecting the Camera System automatically includes "
+#     "the required camera, NVR, PoE, CAT 5 cable and storage."
+# )
+
+# camera_selected = st.checkbox(
+#     "Enable Camera System",
+#     value=any(
+#         st.session_state.accessory_qty.get(part, 0) > 0
+#         for part in CAMERA_PARTS
+#     ),
+#     key="camera_system"
+# )
 
 
+# if camera_selected:
+
+#     # --------------------------------------------------------
+#     # AUTOMATICALLY ADD CAMERA COMPONENTS
+#     # --------------------------------------------------------
+
+#     for part in CAMERA_PARTS:
+
+#         if part in optional_lookup:
+
+#             st.session_state.accessory_qty[part] = 1
+
+#     st.success(
+#         "Camera System selected → "
+#         "all required camera components automatically included."
+#     )
+
+#     # --------------------------------------------------------
+#     # SHOW INCLUDED COMPONENTS
+#     # --------------------------------------------------------
+
+#     st.markdown("**Included Camera Components:**")
+
+#     for part in CAMERA_PARTS:
+
+#         if part in optional_lookup:
+
+#             r = optional_lookup[part]
+
+#             st.write(
+#                 f"✓ **{part}** — {r['Description']}"
+#             )
+
+# else:
+
+#     # Remove all camera components
+#     for part in CAMERA_PARTS:
+
+#         st.session_state.accessory_qty.pop(
+#             part,
+#             None
+#         )
 # ============================================================
-# CAMERA SYSTEM
+# CAMERA
 # ============================================================
 
-st.subheader("📷 Camera System")
+st.subheader("3.2 Camera")
 
-st.caption(
-    "Selecting the Camera System automatically includes "
-    "the required camera, NVR, PoE, CAT 5 cable and storage."
+camera_options = ["No", "Yes"]
+
+camera_current = "Yes" if any(
+    st.session_state.accessory_qty.get(part, 0) > 0
+    for part in CAMERA_PARTS
+) else "No"
+
+camera_selection = st.selectbox(
+    "Camera",
+    camera_options,
+    index=camera_options.index(camera_current),
+    key="camera_system_selection"
 )
 
-camera_selected = st.checkbox(
-    "Enable Camera System",
-    value=any(
-        st.session_state.accessory_qty.get(part, 0) > 0
-        for part in CAMERA_PARTS
-    ),
-    key="camera_system"
-)
-
+camera_selected = camera_selection == "Yes"
 
 if camera_selected:
-
-    # --------------------------------------------------------
-    # AUTOMATICALLY ADD CAMERA COMPONENTS
-    # --------------------------------------------------------
-
     for part in CAMERA_PARTS:
-
         if part in optional_lookup:
-
             st.session_state.accessory_qty[part] = 1
-
-    st.success(
-        "Camera System selected → "
-        "all required camera components automatically included."
-    )
-
-    # --------------------------------------------------------
-    # SHOW INCLUDED COMPONENTS
-    # --------------------------------------------------------
-
-    st.markdown("**Included Camera Components:**")
-
-    for part in CAMERA_PARTS:
-
-        if part in optional_lookup:
-
-            r = optional_lookup[part]
-
-            st.write(
-                f"✓ **{part}** — {r['Description']}"
-            )
-
 else:
-
-    # Remove all camera components
     for part in CAMERA_PARTS:
-
-        st.session_state.accessory_qty.pop(
-            part,
-            None
-        )
+        st.session_state.accessory_qty.pop(part, None)
 
 
 # ============================================================
