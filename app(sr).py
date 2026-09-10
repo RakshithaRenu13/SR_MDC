@@ -842,7 +842,7 @@ if selected_pdu != "None":
 # 4. OPTIONAL ACCESSORIES
 # ============================================================
 
-st.header("3. Optional Accessories")
+st.header("4. Optional Accessories")
 
 # ------------------------------------------------------------
 # PART CODES
