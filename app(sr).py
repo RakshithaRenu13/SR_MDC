@@ -673,7 +673,10 @@ is_internal = (
 # ------------------------------------------------------------
 # 1 Customer details
 # ------------------------------------------------------------
-st.header("1. Customer Details")
+st.markdown(
+    '<div class="section-box">1. CUSTOMER DETAILS</div>',
+    unsafe_allow_html=True
+)
 
 c1, c2 = st.columns(2)
 with c1:
