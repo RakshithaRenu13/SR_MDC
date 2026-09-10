@@ -878,37 +878,14 @@ is_internal = (
 # ------------------------------------------------------------
 # 1 Customer details
 # ------------------------------------------------------------
-st.html("""
-<div style="
-    background: linear-gradient(135deg, #005EB8, #003B71);
-    color: white;
-    padding: 10px 16px;
-    border-radius: 8px;
-    margin: 20px 0 15px 0;
-    font-size: 18px;
-    font-weight: 700;
-">
-    1. CUSTOMER DETAILS
-</div>
-""")
-
-c1, c2 = st.columns(2)
-with c1:
-    st.session_state.customer_name = st.text_input(
-        "Customer Name", st.session_state.customer_name
-    )
-with c2:
-    st.session_state.customer_place = st.text_input(
-        "Customer Place", st.session_state.customer_place
-    )
-
-st.session_state.problem = st.text_area(
-    "Problem Description", st.session_state.problem, height=90
-)
-st.session_state.solution = st.text_area(
-    "Solution", st.session_state.solution, height=90
+customer_name = st.text_input(
+    "Customer Name",
+    value=st.session_state.customer_name,
+    key="customer_name_input",
+    placeholder="Enter customer name"
 )
 
+st.session_state.customer_name = customer_name.strip()
 # ============================================================
 # 2. MDC Type & Configuration
 # ============================================================
@@ -1978,8 +1955,11 @@ if not bom.empty:
         bom=bom_with_price,
         cost_data=None,
     )
+    customer_name_valid = bool(
+    st.session_state.customer_name.strip()
+)
 
-    if is_internal:
+    if is_internal and customer_name_valid:
         st.success("Internal MDC user: both Excel versions are available.")
 
         col1, col2 = st.columns(2)
