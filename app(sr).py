@@ -835,18 +835,21 @@ st.html("""
 </div>
 """)
 
-pdu_options = [
-    f'{r["Part Code"]} — {r["Description"]}'
-    for _, r in pdus_df.iterrows()
-]
+# ------------------------------------------------------------
+# PDU selection - segregated by PDU TYPE
+# ------------------------------------------------------------
+
+# Get available PDU types directly from the Excel TYPE column
+pdu_types = ["None", "Basic PDU", "Metered PDU", "Switched PDU"]
 
 col1, col2 = st.columns([5, 1.5])
 
 with col1:
-    selected_pdu = st.selectbox(
-        "Select PDU",
-        ["None"] + pdu_options,
-        index=0
+    selected_pdu_type = st.selectbox(
+        "PDU Type",
+        pdu_types,
+        index=0,
+        key="pdu_type_selection"
     )
 
 with col2:
@@ -862,14 +865,53 @@ with col2:
 # Reset PDU quantity dictionary
 st.session_state.pdu_qty = {}
 
-if selected_pdu != "None":
+# ------------------------------------------------------------
+# Show PDU options based on selected TYPE
+# ------------------------------------------------------------
 
-    selected_index = pdu_options.index(selected_pdu)
-    selected_row = pdus_df.iloc[selected_index]
+if selected_pdu_type != "None":
 
-    part = str(selected_row["Part Code"])
+    # Convert UI selection to Excel TYPE value
+    type_mapping = {
+        "Basic PDU": "BASIC",
+        "Metered PDU": "METERED",
+        "Switched PDU": "SWITCHED",
+    }
 
-    st.session_state.pdu_qty[part] = qty
+    excel_pdu_type = type_mapping[selected_pdu_type]
+
+    # Filter PDU data using the TYPE column from Excel
+    filtered_pdus = pdus_df[
+        pdus_df["Type"]
+        .astype(str)
+        .str.strip()
+        .str.upper()
+        == excel_pdu_type
+    ].copy()
+
+    if not filtered_pdus.empty:
+
+        pdu_options = [
+            f'{r["Part Code"]} — {r["Description"]}'
+            for _, r in filtered_pdus.iterrows()
+        ]
+
+        selected_pdu = st.selectbox(
+            f"Select {selected_pdu_type}",
+            pdu_options,
+            index=0,
+            key="pdu_model_selection"
+        )
+
+        selected_index = pdu_options.index(selected_pdu)
+        selected_row = filtered_pdus.iloc[selected_index]
+
+        part = str(selected_row["Part Code"])
+
+        st.session_state.pdu_qty[part] = qty
+
+    else:
+        st.warning(f"No {selected_pdu_type} options found in the Excel data.")
 
 # ============================================================
 # 4. OPTIONAL ACCESSORIES
