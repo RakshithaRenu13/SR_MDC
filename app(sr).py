@@ -1108,8 +1108,24 @@ def _excel_configuration_factory_cost():
         if value is not None:
             return float(value)
 
-    # No invented fallback. If Excel has no configuration-level cost, return
-    # None so the UI shows XXX instead of silently calculating a wrong cost.
+    # If the workbook does not provide a separate configuration-level total,
+    # calculate the factory cost from the actual Excel component rows. This is
+    # required for BOQ-style workbooks where the last column of each component
+    # row is the standard cost. Unknown values such as #N/A/XXX are ignored.
+    rows = selected_components()
+    if not rows.empty:
+        total = 0.0
+        found_numeric = False
+        for _, row in rows.iterrows():
+            cost = _to_number(row.get("Unit Cost"))
+            qty = _to_number(row.get("Quantity"))
+            qty = 1.0 if qty is None else qty
+            if cost is not None:
+                total += float(cost) * float(qty)
+                found_numeric = True
+        if found_numeric:
+            return total
+
     return None
 
 
@@ -1142,16 +1158,26 @@ def add_selling_prices(bom, total_cost, margin_pct, freight, installation):
     result = bom.copy()
 
     # Cost-based margin conversion.
-    margin_price = total_cost / (1 - margin_pct / 100) if margin_pct < 100 else 0
-    final_selling_price = margin_price + freight + installation
+    # Excel can contain #N/A/XXX costs. If no numeric configuration cost is
+    # available, keep the price fields empty instead of crashing Streamlit.
+    if total_cost is None or pd.isna(total_cost):
+        margin_price = None
+        final_selling_price = None
+    else:
+        total_cost = float(total_cost)
+        margin_price = (
+            total_cost / (1 - margin_pct / 100)
+            if margin_pct < 100 else 0.0
+        )
+        final_selling_price = margin_price + float(freight or 0) + float(installation or 0)
 
     # Allocate the final selling price proportionally to known-cost BOM lines.
     # This makes BOM Total Price reconcile to the final selling price.
     known_cost_total = result["Total Cost"].fillna(0).sum() if not result.empty else 0
 
-    if known_cost_total > 0:
+    if known_cost_total > 0 and final_selling_price is not None:
         result["Total Price"] = result["Total Cost"].fillna(0) / known_cost_total * final_selling_price
-        result["Unit Price"] = result["Total Price"] / result["Quantity"]
+        result["Unit Price"] = result["Total Price"] / result["Quantity"].replace(0, 1)
     else:
         result["Total Price"] = pd.NA
         result["Unit Price"] = pd.NA
@@ -1961,15 +1987,19 @@ if not bom.empty:
 else:
     bom_with_price = bom.copy()
     margin_pct_tmp = st.session_state.margin_pct
-    margin_price = (
-        total_cost / (1 - margin_pct_tmp / 100)
-        if margin_pct_tmp < 100 else 0.0
-    )
-    final_selling_price = (
-        margin_price
-        + st.session_state.freight
-        + st.session_state.installation
-    )
+    if total_cost is None or pd.isna(total_cost):
+        margin_price = None
+        final_selling_price = None
+    else:
+        margin_price = (
+            float(total_cost) / (1 - margin_pct_tmp / 100)
+            if margin_pct_tmp < 100 else 0.0
+        )
+        final_selling_price = (
+            margin_price
+            + float(st.session_state.freight or 0)
+            + float(st.session_state.installation or 0)
+        )
 
 # ------------------------------------------------------------
 # Final BOQ header + Final Selling Price on the same line
