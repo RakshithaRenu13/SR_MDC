@@ -1,5 +1,7 @@
 import os
 import sqlite3
+import hashlib
+import re
 from io import BytesIO
 from datetime import datetime
 
@@ -344,25 +346,508 @@ def save_configuration(
 init_tracking_db()
 
 # ------------------------------------------------------------
-# Load master data
+# DYNAMIC EXCEL MASTER DATA
+# ONE workbook is the source of truth.
+#
+# Expected sheets:
+#   Configurations, Components, Accessories, PDUs
+#
+# The workbook can be uploaded from the sidebar, or the local
+# MDC_Master_V1.xlsx beside app.py can be used.
+#
+# No cache is used: when the local Excel is edited/replaced,
+# the next Streamlit rerun reads the latest values.
 # ------------------------------------------------------------
-@st.cache_data
-def load_master():
-    configs = pd.read_excel(MASTER_FILE, sheet_name="Configurations")
-    components = pd.read_excel(MASTER_FILE, sheet_name="Components")
-    accessories = pd.read_excel(MASTER_FILE, sheet_name="Accessories")
-    pdus = pd.read_excel(MASTER_FILE, sheet_name="PDUs")
 
-    # Fill merged TYPE cells downward
-    # Example:
-    # BASIC -> BASIC -> BASIC -> BASIC
-    # METERED -> METERED -> ...
-    # SWITCHED -> SWITCHED -> ...
-    pdus["Type"] = pdus["Type"].ffill()
+def _to_number(value):
+    """Convert Excel numeric/currency text to a real float.
+    Keeps decimals such as 309736.1296 and treats #N/A/XXX as unknown.
+    """
+    if value is None:
+        return None
+    try:
+        if pd.isna(value):
+            return None
+    except Exception:
+        pass
+    if isinstance(value, bool):
+        return None
+    if isinstance(value, (int, float)):
+        return float(value)
+
+    text = str(value).strip()
+    if not text or text.lower() in {
+        "nan", "none", "null", "xxx", "-", "n/a", "#n/a", "na"
+    }:
+        return None
+
+    # Excel may contain commas, currency symbols, spaces, etc.
+    text = text.replace(",", "")
+    match = re.search(r"[-+]?\d+(?:\.\d+)?", text)
+    if not match:
+        return None
+    try:
+        return float(match.group(0))
+    except ValueError:
+        return None
+
+
+def _clean_text(value):
+    if value is None:
+        return ""
+    try:
+        if pd.isna(value):
+            return ""
+    except Exception:
+        pass
+    return str(value).strip()
+
+
+def _normalise_part_code(value):
+    text = _clean_text(value)
+    if not text or text.lower() in {"nan", "none", "xxx"}:
+        return ""
+    # Avoid turning an Excel numeric part number such as 801029209.0
+    # into a different SKU.
+    # Only normalise true numeric Excel values. Do not extract digits from
+    # alphanumeric SKUs such as HRD-XH1C.
+    if isinstance(value, (int, float)) and not isinstance(value, bool):
+        if float(value).is_integer():
+            return str(int(value))
+        return str(value)
+    return text
+
+
+def _make_solution_title(solution_no, heading):
+    h = _clean_text(heading)
+    h = re.sub(r"^SOLUTION\s*\d*\s*[-:]?\s*", "", h, flags=re.I).strip()
+    return h or f"Configuration {solution_no}"
+
+
+def _empty_tables():
+    configs = pd.DataFrame(columns=["MDC Type", "Configuration", "Configuration Title", "Base Cost", "Status"])
+    components = pd.DataFrame(columns=["MDC Type", "Configuration", "Part Code", "Description", "Quantity", "UOM", "Unit Cost", "Pricing Status"])
+    accessories = pd.DataFrame(columns=["Part Code", "Description", "Default Quantity", "UOM", "Unit Cost"])
+    pdus = pd.DataFrame(columns=["Part Code", "Description", "UOM", "Type", "C13", "C19", "Unit Cost"])
+    return configs, components, accessories, pdus
+
+
+def _cell_matrix(ws):
+    """Read an entire worksheet as raw values. No assumptions about sheet count."""
+    return [[ws.cell(r, c).value for c in range(1, ws.max_column + 1)]
+            for r in range(1, ws.max_row + 1)]
+
+
+def _find_solution_headings(matrix):
+    found = []
+    for r, row in enumerate(matrix, start=1):
+        for c, value in enumerate(row, start=1):
+            text = _clean_text(value)
+            m = re.search(r"\bSOLUTION\s*(\d+)\b", text, re.I)
+            if m:
+                found.append((r, c, int(m.group(1)), text))
+    # Same solution may appear merged/repeated in adjacent cells. Keep first.
+    unique = {}
+    for item in found:
+        unique.setdefault((item[2], item[0]), item)
+    return sorted(unique.values(), key=lambda x: (x[0], x[1]))
+
+
+def _looks_like_header(row):
+    text = " | ".join(_clean_text(v).upper() for v in row if _clean_text(v))
+    return (
+        ("PART NUMBER" in text or "PART NO" in text or "SKU" in text or "PART CODE" in text)
+        and ("DESCRIPTION" in text or "ITEM DESCRIPTION" in text)
+    )
+
+
+def _find_header_row(matrix, start_row=1, end_row=None):
+    end_row = end_row or len(matrix)
+    for r in range(max(1, start_row), min(end_row, len(matrix)) + 1):
+        if _looks_like_header(matrix[r - 1]):
+            return r
+    return None
+
+
+def _header_col_map(row):
+    mapping = {}
+    for i, value in enumerate(row, start=1):
+        t = re.sub(r"[^a-z0-9]", "", _clean_text(value).lower())
+        if t in {"partnumber", "partno", "partcode", "sku", "itemcode"}:
+            mapping.setdefault("part", i)
+        elif t in {"description", "itemdescription", "componentdescription", "productdescription"}:
+            mapping.setdefault("desc", i)
+        elif t in {"quantity", "qty"}:
+            mapping.setdefault("qty", i)
+        elif t in {"uom", "unit", "unitofmeasure"}:
+            mapping.setdefault("uom", i)
+        elif t in {"cost", "standardcost", "factorycost", "cogs", "unitcost", "price"} or "cost" in t:
+            mapping.setdefault("cost", i)
+        elif t in {"type", "pdutype"}:
+            mapping.setdefault("type", i)
+        elif t == "c13":
+            mapping.setdefault("c13", i)
+        elif t == "c19":
+            mapping.setdefault("c19", i)
+    return mapping
+
+
+def _parse_solution_block(matrix, start_row, start_col, solution_no, end_row=None):
+    """Parse the common 5-column side-by-side BOM layout used by the supplied BOQ."""
+    max_row = end_row or len(matrix)
+    # Header is normally immediately below SOLUTION heading; search nearby too.
+    header_row = _find_header_row(matrix, start_row + 1, min(max_row, start_row + 6))
+    if not header_row:
+        return []
+
+    # For the side-by-side layout, the cost is the last column of the 5-column block.
+    # If the detected header is usable, still prefer the block relative to solution heading.
+    part_col = start_col
+    desc_col = start_col + 1
+    qty_col = start_col + 2
+    uom_col = start_col + 3
+    cost_col = start_col + 4
+
+    rows = []
+    for r in range(header_row + 1, max_row + 1):
+        row = matrix[r - 1]
+        vals = row[start_col - 1:cost_col]
+        if not vals:
+            continue
+        part = _normalise_part_code(row[part_col - 1] if part_col <= len(row) else None)
+        desc = _clean_text(row[desc_col - 1] if desc_col <= len(row) else None)
+        qty_raw = row[qty_col - 1] if qty_col <= len(row) else None
+        uom = _clean_text(row[uom_col - 1] if uom_col <= len(row) else None) or "EA"
+        cost_raw = row[cost_col - 1] if cost_col <= len(row) else None
+
+        # Stop when another major section begins.
+        joined = " ".join(_clean_text(v).upper() for v in row if _clean_text(v))
+        if "OTHER OPTIONAL ITEMS" in joined or "SINGLE PHASE PDU" in joined:
+            break
+        if not desc:
+            continue
+        # Do not accidentally consume another solution block in the same columns.
+        if re.search(r"\bSOLUTION\s*\d+\b", desc, re.I):
+            break
+
+        qty = _to_number(qty_raw)
+        if qty is None:
+            qty = 1.0
+        cost = _to_number(cost_raw)
+        rows.append({
+            "MDC Type": "Single Rack",
+            "Configuration": f"Configuration {solution_no}",
+            "Part Code": part,
+            "Description": desc,
+            "Quantity": qty,
+            "UOM": uom,
+            "Unit Cost": cost,
+            "Pricing Status": "EXCEL COST" if cost is not None else _clean_text(cost_raw),
+        })
+    return rows
+
+
+def _parse_table_sheet(matrix, sheet_name):
+    """Parse a conventional table-style sheet when the workbook uses multiple sheets."""
+    header_row = _find_header_row(matrix)
+    if not header_row:
+        return [], [], [], []
+    mapping = _header_col_map(matrix[header_row - 1])
+    if "desc" not in mapping:
+        return [], [], [], []
+
+    text_all = " ".join(_clean_text(v).upper() for row in matrix for v in row if _clean_text(v))
+    # A dedicated PDU sheet/table is detected by its headers/content.
+    is_pdu = "PDU" in sheet_name.upper() or "PDU TYPE" in text_all or "METERED" in text_all or "SWITCHED" in text_all
+    is_optional = "OPTIONAL" in sheet_name.upper() or "OPTIONAL" in text_all
+
+    # Determine MDC/configuration from sheet name when available.
+    mdc_type = "Multirack" if "MULTI" in sheet_name.upper() else "Single Rack"
+    m = re.search(r"(?:CONFIGURATION|CONFIG|SOLUTION)\s*([0-9]+)", sheet_name, re.I)
+    configuration = f"Configuration {m.group(1)}" if m else "Configuration 1"
+
+    rows = []
+    for r in range(header_row + 1, len(matrix) + 1):
+        row = matrix[r - 1]
+        get = lambda key: row[mapping[key] - 1] if key in mapping and mapping[key] <= len(row) else None
+        desc = _clean_text(get("desc"))
+        if not desc:
+            continue
+        part = _normalise_part_code(get("part"))
+        qty = _to_number(get("qty")) if "qty" in mapping else 1.0
+        qty = 1.0 if qty is None else qty
+        uom = _clean_text(get("uom")) or "EA"
+        cost_raw = get("cost")
+        cost = _to_number(cost_raw)
+        row_out = {
+            "MDC Type": mdc_type,
+            "Configuration": configuration,
+            "Part Code": part,
+            "Description": desc,
+            "Quantity": qty,
+            "UOM": uom,
+            "Unit Cost": cost,
+            "Pricing Status": "EXCEL COST" if cost is not None else _clean_text(cost_raw),
+        }
+        if is_pdu:
+            row_out["Type"] = _clean_text(get("type"))
+            row_out["C13"] = get("c13")
+            row_out["C19"] = get("c19")
+        rows.append(row_out)
+
+    if is_pdu:
+        return [], [], [], rows
+    if is_optional:
+        return [], [], rows, []
+    cfg = [{
+        "MDC Type": mdc_type,
+        "Configuration": configuration,
+        "Configuration Title": sheet_name,
+        "Base Cost": None,
+        "Status": "EXCEL DATA",
+    }]
+    return cfg, rows, [], []
+
+
+def _parse_single_sheet_layout(ws):
+    """Parse the supplied BOQ style: multiple solution blocks + optional + PDU in ONE sheet."""
+    matrix = _cell_matrix(ws)
+    configs, components, accessories, pdus = [], [], [], []
+    headings = _find_solution_headings(matrix)
+
+    # Each solution occupies a side-by-side block. The next SOLUTION in the same
+    # column, or the optional/PDU section, determines where that block ends.
+    for idx, (start_row, start_col, solution_no, heading) in enumerate(headings):
+        same_col_next = [x[0] for x in headings[idx + 1:] if x[1] == start_col]
+        next_row = min(same_col_next) if same_col_next else len(matrix) + 1
+        for r in range(start_row + 1, next_row):
+            left = " ".join(_clean_text(v).upper() for v in matrix[r - 1] if _clean_text(v))
+            if "OTHER OPTIONAL ITEMS" in left or "SINGLE PHASE PDU" in left:
+                next_row = r
+                break
+
+        config_name = f"Configuration {solution_no}"
+        configs.append({
+            "MDC Type": "Single Rack",
+            "Configuration": config_name,
+            "Configuration Title": _make_solution_title(solution_no, heading),
+            "Base Cost": None,
+            "Status": "REAL EXCEL DATA",
+        })
+        components.extend(_parse_solution_block(matrix, start_row, start_col, solution_no, next_row - 1))
+
+    # Optional section: locate it anywhere in the worksheet and infer columns from
+    # the section's own header. In the supplied workbook cost is column E.
+    optional_start = None
+    pdu_start = None
+    for r, row in enumerate(matrix, start=1):
+        joined = " ".join(_clean_text(v).upper() for v in row if _clean_text(v))
+        if "OTHER OPTIONAL ITEMS" in joined:
+            optional_start = r
+        if "SINGLE PHASE PDU" in joined:
+            pdu_start = r
+
+    if optional_start:
+        # Optional section may have no formal header row. The supplied workbook
+        # starts data immediately below the section title: A=Part, B=Description,
+        # C=Qty, D=UOM, E=Cost. If a formal header exists, use it; otherwise use
+        # the same positional pattern detected from the populated rows.
+        header = _find_header_row(matrix, optional_start + 1, min(len(matrix), optional_start + 8))
+        if header:
+            row0 = matrix[header - 1]
+            mp = _header_col_map(row0)
+            data_start = header + 1
+            part_col = mp.get("part", 1)
+            desc_col = mp.get("desc", part_col + 1)
+            qty_col = mp.get("qty", desc_col + 1)
+            uom_col = mp.get("uom", qty_col + 1)
+            cost_col = mp.get("cost", desc_col + 3)
+        else:
+            data_start = optional_start + 1
+            part_col, desc_col, qty_col, uom_col, cost_col = 1, 2, 3, 4, 5
+        stop = pdu_start or len(matrix) + 1
+        for r in range(data_start, stop):
+            row = matrix[r - 1]
+            part = _normalise_part_code(row[part_col - 1] if part_col <= len(row) else None)
+            desc = _clean_text(row[desc_col - 1] if desc_col <= len(row) else None)
+            if not desc:
+                continue
+            qty = _to_number(row[qty_col - 1]) if qty_col <= len(row) else 1.0
+            qty = 1.0 if qty is None else qty
+            uom = _clean_text(row[uom_col - 1] if uom_col <= len(row) else None) or "EA"
+            cost_raw = row[cost_col - 1] if cost_col <= len(row) else None
+            accessories.append({
+                "Part Code": part, "Description": desc, "Default Quantity": qty,
+                "UOM": uom, "Unit Cost": _to_number(cost_raw),
+            })
+
+    if pdu_start:
+        # PDU section in the supplied workbook has its column labels on the
+        # section-title row itself (A=part, B=description, C=C13, D=C19, E=TYPE, F=cost).
+        header = _find_header_row(matrix, pdu_start + 1, min(len(matrix), pdu_start + 8))
+        if header:
+            row0 = matrix[header - 1]
+            mp = _header_col_map(row0)
+            data_start = header + 1
+            part_col = mp.get("part", 1)
+            desc_col = mp.get("desc", 2)
+            type_col = mp.get("type", 5)
+            c13_col = mp.get("c13", 3)
+            c19_col = mp.get("c19", 4)
+            cost_col = mp.get("cost", 6)
+        else:
+            data_start = pdu_start + 1
+            part_col, desc_col, c13_col, c19_col, type_col, cost_col = 1, 2, 3, 4, 5, 6
+        for r in range(data_start, len(matrix) + 1):
+            row = matrix[r - 1]
+            part = _normalise_part_code(row[part_col - 1] if part_col <= len(row) else None)
+            desc = _clean_text(row[desc_col - 1] if desc_col <= len(row) else None)
+            if not desc:
+                continue
+            pdu_type = _clean_text(row[type_col - 1] if type_col <= len(row) else None)
+            # In the actual sheet TYPE is merged/blank on following rows; carry
+            # the last visible type forward.
+            if not pdu_type and pdus:
+                pdu_type = pdus[-1].get("Type", "")
+            pdus.append({
+                "Part Code": part, "Description": desc, "UOM": "EA",
+                "Type": pdu_type,
+                "C13": row[c13_col - 1] if c13_col <= len(row) else None,
+                "C19": row[c19_col - 1] if c19_col <= len(row) else None,
+                "Unit Cost": _to_number(row[cost_col - 1] if cost_col <= len(row) else None),
+            })
 
     return configs, components, accessories, pdus
 
-configs_df, components_df, accessories_df, pdus_df = load_master()
+
+def _finalise_tables(configs, components, accessories, pdus):
+    configs_df = pd.DataFrame(configs)
+    components_df = pd.DataFrame(components)
+    accessories_df = pd.DataFrame(accessories)
+    pdus_df = pd.DataFrame(pdus)
+
+    # Guarantee the columns expected by the rest of the existing application.
+    for col in ["MDC Type", "Configuration", "Configuration Title", "Base Cost", "Status"]:
+        if col not in configs_df.columns:
+            configs_df[col] = pd.NA
+    for col in ["MDC Type", "Configuration", "Part Code", "Description", "Quantity", "UOM", "Unit Cost", "Pricing Status"]:
+        if col not in components_df.columns:
+            components_df[col] = pd.NA
+    for col in ["Part Code", "Description", "Default Quantity", "UOM", "Unit Cost"]:
+        if col not in accessories_df.columns:
+            accessories_df[col] = pd.NA
+    for col in ["Part Code", "Description", "UOM", "Type", "C13", "C19", "Unit Cost"]:
+        if col not in pdus_df.columns:
+            pdus_df[col] = pd.NA
+
+    if not components_df.empty:
+        components_df["Unit Cost"] = components_df["Unit Cost"].apply(_to_number)
+        components_df["Quantity"] = components_df["Quantity"].apply(_to_number).fillna(1.0)
+    if not accessories_df.empty:
+        accessories_df["Unit Cost"] = accessories_df["Unit Cost"].apply(_to_number)
+        accessories_df["Default Quantity"] = accessories_df["Default Quantity"].apply(_to_number).fillna(1.0)
+    if not pdus_df.empty:
+        pdus_df["Unit Cost"] = pdus_df["Unit Cost"].apply(_to_number)
+        pdus_df["Type"] = pdus_df["Type"].ffill()
+
+    # Remove accidental empty records but keep every real Excel line, including
+    # duplicate part numbers and unknown (#N/A/XXX) costs.
+    if not components_df.empty:
+        components_df = components_df[components_df["Description"].fillna("").astype(str).str.strip() != ""].reset_index(drop=True)
+    if not accessories_df.empty:
+        accessories_df = accessories_df[accessories_df["Description"].fillna("").astype(str).str.strip() != ""].reset_index(drop=True)
+    if not pdus_df.empty:
+        pdus_df = pdus_df[pdus_df["Description"].fillna("").astype(str).str.strip() != ""].reset_index(drop=True)
+
+    configs_df = configs_df.drop_duplicates(subset=["MDC Type", "Configuration"], keep="first").reset_index(drop=True)
+    return configs_df, components_df, accessories_df, pdus_df
+
+
+def load_master_from_excel(excel_source):
+    """Universal Excel loader.
+
+    It does NOT require a particular number of worksheets or worksheet names.
+    It inspects every worksheet. If a worksheet contains the supplied one-sheet
+    side-by-side SOLUTION layout, it parses that layout. If the workbook instead
+    contains conventional table sheets, it parses those tables. Both formats can
+    coexist in the same workbook.
+    """
+    import openpyxl
+
+    # openpyxl data_only=True returns the cached displayed value for formula cells.
+    # Fall back to pandas/raw values if needed.
+    wb = openpyxl.load_workbook(excel_source, data_only=True, read_only=False)
+    configs, components, accessories, pdus = [], [], [], []
+
+    for ws in wb.worksheets:
+        matrix = _cell_matrix(ws)
+        if not any(_clean_text(v) for row in matrix for v in row):
+            continue
+
+        solution_headings = _find_solution_headings(matrix)
+        if solution_headings:
+            c, comp, acc, p = _parse_single_sheet_layout(ws)
+            configs.extend(c)
+            components.extend(comp)
+            accessories.extend(acc)
+            pdus.extend(p)
+        else:
+            c, comp, acc, p = _parse_table_sheet(matrix, ws.title)
+            configs.extend(c)
+            components.extend(comp)
+            accessories.extend(acc)
+            pdus.extend(p)
+
+    if not configs and not components and not accessories and not pdus:
+        raise ValueError("No recognizable MDC configuration/component data was found in the Excel workbook.")
+
+    return _finalise_tables(configs, components, accessories, pdus)
+
+
+# ------------------------------------------------------------
+# MASTER EXCEL FROM GITHUB / SAME REPOSITORY
+# ------------------------------------------------------------
+# No Excel uploader is used. The master workbook must be committed
+# to the same GitHub repository/folder as app.py.
+# The app reads the workbook directly from the deployed repository.
+
+MASTER_CANDIDATES = [
+    os.path.join(BASE_DIR, "1 Rack SKU'S - MDC BOQ (01.09.2026).xlsx"),
+    os.path.join(BASE_DIR, "1 Rack SKU'S - MDC BOQ (01.09.2026)(1).xlsx"),
+    os.path.join(BASE_DIR, "MDC_Master_V1.xlsx"),
+]
+
+# Also accept an Excel file containing "MDC BOQ" in its filename.
+if not any(os.path.isfile(p) for p in MASTER_CANDIDATES):
+    for filename in os.listdir(BASE_DIR):
+        lower = filename.lower()
+        if lower.endswith((".xlsx", ".xls")) and "mdc" in lower and "boq" in lower:
+            MASTER_CANDIDATES.append(os.path.join(BASE_DIR, filename))
+            break
+
+MASTER_FILE = next((p for p in MASTER_CANDIDATES if os.path.isfile(p)), None)
+
+if MASTER_FILE is None:
+    st.error(
+        "Master Excel workbook not found in the GitHub repository. "
+        "Please commit the MDC BOQ Excel file in the same folder as app.py."
+    )
+    st.stop()
+
+try:
+    # No Streamlit cache: read the repository workbook on every rerun.
+    configs_df, components_df, accessories_df, pdus_df = load_master_from_excel(
+        MASTER_FILE
+    )
+    st.sidebar.success(
+        f"Master Excel loaded: {os.path.basename(MASTER_FILE)}"
+    )
+    st.sidebar.caption(
+        "Costs are read directly from the repository Excel workbook."
+    )
+except Exception as exc:
+    st.error(f"Unable to read the master Excel workbook: {exc}")
+    st.stop()
 
 # ------------------------------------------------------------
 # Session state
@@ -550,8 +1035,8 @@ def build_bom():
 
     # Configuration BOM
     for _, r in selected_components().iterrows():
-        cost = r["Unit Cost"]
-        qty = float(r["Quantity"])
+        cost = _to_number(r["Unit Cost"])
+        qty = _to_number(r["Quantity"]) or 0.0
         rows.append({
             "S.No.": len(rows) + 1,
             "Component Type": "Base (Configuration)",
@@ -569,7 +1054,7 @@ def build_bom():
         part = str(r["Part Code"])
         qty = float(st.session_state.accessory_qty.get(part, 0))
         if qty > 0:
-            cost = r["Unit Cost"]
+            cost = _to_number(r["Unit Cost"])
             rows.append({
                 "S.No.": len(rows) + 1,
                 "Component Type": "Optional Accessory",
@@ -587,7 +1072,7 @@ def build_bom():
         part = str(r["Part Code"])
         qty = float(st.session_state.pdu_qty.get(part, 0))
         if qty > 0:
-            cost = r["Unit Cost"]
+            cost = _to_number(r["Unit Cost"])
             desc = f'{r["Description"]} | Type: {r["Type"]} | C13: {r["C13"]} | C19: {r["C19"]}'
             rows.append({
                 "S.No.": len(rows) + 1,
@@ -603,9 +1088,33 @@ def build_bom():
 
     return pd.DataFrame(rows)
 
-def cost_summary(bom):
+def _excel_configuration_factory_cost():
+    """
+    Return the configuration-level factory cost from Excel.
+
+    IMPORTANT: The supplied master workbook has TWO different cost levels:
+      1. Configurations -> Base Cost = complete solution factory cost.
+      2. Components -> Unit Cost = cost of an individual BOM line.
+
+    The configuration Base Cost must be used for the solution TOTAL.
+    We must NOT sum only the component rows with populated Unit Cost, because
+    many BOM rows intentionally have blank/XXX individual costs. Doing that
+    would produce an incomplete and therefore incorrect solution cost.
+    """
     cfg = selected_config_record()
-    base_cost = float(cfg["Base Cost"]) if cfg is not None and pd.notna(cfg["Base Cost"]) else 0.0
+
+    if cfg is not None and "Base Cost" in cfg.index:
+        value = _to_number(cfg["Base Cost"])
+        if value is not None:
+            return float(value)
+
+    # No invented fallback. If Excel has no configuration-level cost, return
+    # None so the UI shows XXX instead of silently calculating a wrong cost.
+    return None
+
+
+def cost_summary(bom):
+    base_cost = _excel_configuration_factory_cost()
 
     optional_cost = 0.0
     pdu_cost = 0.0
@@ -620,7 +1129,13 @@ def cost_summary(bom):
             .fillna(0).sum()
         )
 
-    total_cost = base_cost + optional_cost + pdu_cost
+    if base_cost is None:
+        total_cost = None
+    elif optional_cost is None or pdu_cost is None:
+        total_cost = None
+    else:
+        total_cost = base_cost + optional_cost + pdu_cost
+
     return base_cost, optional_cost, pdu_cost, total_cost
 
 def add_selling_prices(bom, total_cost, margin_pct, freight, installation):
@@ -904,11 +1419,21 @@ st.html("""
 </div>
 """)
 
+mdc_types = [
+    str(x).strip()
+    for x in configs_df["MDC Type"].dropna().unique().tolist()
+    if str(x).strip()
+]
+if not mdc_types:
+    mdc_types = ["Single Rack"]
+if st.session_state.mdc_type not in mdc_types:
+    st.session_state.mdc_type = mdc_types[0]
+
 mdc_type = st.radio(
     "MDC Type",
-    ["Single Rack", "Multirack"],
+    mdc_types,
     horizontal=True,
-    index=0 if st.session_state.mdc_type == "Single Rack" else 1,
+    index=mdc_types.index(st.session_state.mdc_type),
 )
 
 if mdc_type != st.session_state.mdc_type:
@@ -943,18 +1468,15 @@ labels = available["Configuration"].tolist()
 #     )
 if labels:
 
+    # Display names come from Excel. Nothing about the solution description is
+    # hardcoded here, so a changed/new configuration appears automatically.
     configuration_display_names = {
-        "Configuration 1":
-            "Configuration 1 - 1SR, 42U×800W×1200D, 3.5KW, W/O Dehumidifier",
-
-        "Configuration 2":
-            "Configuration 2 - 1SR, 42U×800W×1200D, 7KW, Dehumidifier",
-
-        "Configuration 3":
-            "Configuration 3 - 1SR, 42U×800W×1200D, 7KW, W/O Dehumidifier",
-
-        "Configuration 4":
-            "Configuration 4 - 1SR, 42U×800W×1200D, 7KW, Dehumidifier",
+        str(row["Configuration"]): (
+            str(row["Configuration Title"]).strip()
+            if pd.notna(row["Configuration Title"]) and str(row["Configuration Title"]).strip()
+            else str(row["Configuration"])
+        )
+        for _, row in available.iterrows()
     }
 
     st.session_state.configuration = st.selectbox(
@@ -1780,6 +2302,19 @@ else:
 # ------------------------------------------------------------
 base_cost, optional_cost, pdu_cost, total_cost = cost_summary(bom)
 
+# Excel cost source verification. This makes it obvious which exact
+# configuration-level value is being used and prevents confusion between
+# a line-item Unit Cost and the complete configuration Base Cost.
+_selected_cfg = selected_config_record()
+if is_internal and _selected_cfg is not None:
+    _excel_base = _to_number(_selected_cfg.get("Base Cost"))
+    if _excel_base is not None:
+        st.caption(
+            f"Excel cost source: {_selected_cfg.get('MDC Type', '')} / "
+            f"{_selected_cfg.get('Configuration', '')} → Base Cost = "
+            f"₹ {_excel_base:,.4f}"
+        )
+
 margin_pct = st.session_state.margin_pct
 freight = st.session_state.freight
 installation = st.session_state.installation
@@ -1787,6 +2322,11 @@ warranty_pct = st.session_state.warranty_pct
 
 if is_internal:
     st.header("6. Cost Summary — Internal Only")
+    st.caption(
+        "Factory Cost is read from the configuration-level Base Cost in the master Excel. "
+        "Individual BOM Unit Cost values are used only for their respective line items; "
+        "they are NOT used to replace the complete configuration Base Cost."
+    )
 
     a, b, c, d = st.columns(4)
     with a:
