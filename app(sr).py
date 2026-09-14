@@ -815,31 +815,27 @@ def build_bom():
 
 def _excel_configuration_factory_cost():
     """
-    Configuration factory cost source-of-truth.
+    Return the configuration-level factory cost from Excel.
 
-    If every selected configuration component has a valid Excel cost and
-    quantity, use SUM(Unit Cost * Quantity). This matches the BOQ and avoids
-    hardcoded configuration prices.
+    IMPORTANT: The supplied master workbook has TWO different cost levels:
+      1. Configurations -> Base Cost = complete solution factory cost.
+      2. Components -> Unit Cost = cost of an individual BOM line.
 
-    If component costs are incomplete, fall back to the configuration-level
-    Base Cost / Standard Cost from the Excel workbook.
+    The configuration Base Cost must be used for the solution TOTAL.
+    We must NOT sum only the component rows with populated Unit Cost, because
+    many BOM rows intentionally have blank/XXX individual costs. Doing that
+    would produce an incomplete and therefore incorrect solution cost.
     """
     cfg = selected_config_record()
-    selected = selected_components().copy()
-
-    if not selected.empty:
-        selected["_qty"] = selected["Quantity"].apply(_to_number)
-        selected["_cost"] = selected["Unit Cost"].apply(_to_number)
-
-        if selected["_qty"].notna().all() and selected["_cost"].notna().all():
-            return float((selected["_qty"] * selected["_cost"]).sum())
 
     if cfg is not None and "Base Cost" in cfg.index:
         value = _to_number(cfg["Base Cost"])
         if value is not None:
             return float(value)
 
-    return 0.0
+    # No invented fallback. If Excel has no configuration-level cost, return
+    # None so the UI shows XXX instead of silently calculating a wrong cost.
+    return None
 
 
 def cost_summary(bom):
@@ -858,7 +854,13 @@ def cost_summary(bom):
             .fillna(0).sum()
         )
 
-    total_cost = base_cost + optional_cost + pdu_cost
+    if base_cost is None:
+        total_cost = None
+    elif optional_cost is None or pdu_cost is None:
+        total_cost = None
+    else:
+        total_cost = base_cost + optional_cost + pdu_cost
+
     return base_cost, optional_cost, pdu_cost, total_cost
 
 def add_selling_prices(bom, total_cost, margin_pct, freight, installation):
@@ -2018,6 +2020,19 @@ else:
 # ------------------------------------------------------------
 base_cost, optional_cost, pdu_cost, total_cost = cost_summary(bom)
 
+# Excel cost source verification. This makes it obvious which exact
+# configuration-level value is being used and prevents confusion between
+# a line-item Unit Cost and the complete configuration Base Cost.
+_selected_cfg = selected_config_record()
+if is_internal and _selected_cfg is not None:
+    _excel_base = _to_number(_selected_cfg.get("Base Cost"))
+    if _excel_base is not None:
+        st.caption(
+            f"Excel cost source: {_selected_cfg.get('MDC Type', '')} / "
+            f"{_selected_cfg.get('Configuration', '')} → Base Cost = "
+            f"₹ {_excel_base:,.4f}"
+        )
+
 margin_pct = st.session_state.margin_pct
 freight = st.session_state.freight
 installation = st.session_state.installation
@@ -2026,9 +2041,9 @@ warranty_pct = st.session_state.warranty_pct
 if is_internal:
     st.header("6. Cost Summary — Internal Only")
     st.caption(
-        "Factory Cost is read from the master Excel. Complete configuration "
-        "component costs are summed from Unit Cost × Quantity; configuration "
-        "standard/Base Cost is used only as a fallback."
+        "Factory Cost is read from the configuration-level Base Cost in the master Excel. "
+        "Individual BOM Unit Cost values are used only for their respective line items; "
+        "they are NOT used to replace the complete configuration Base Cost."
     )
 
     a, b, c, d = st.columns(4)
