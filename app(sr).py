@@ -1,5 +1,6 @@
 import os
 import sqlite3
+import hashlib
 from io import BytesIO
 from datetime import datetime
 
@@ -344,25 +345,233 @@ def save_configuration(
 init_tracking_db()
 
 # ------------------------------------------------------------
-# Load master data
+# DYNAMIC EXCEL MASTER DATA
+# ONE workbook is the source of truth.
+#
+# Expected sheets:
+#   Configurations, Components, Accessories, PDUs
+#
+# The workbook can be uploaded from the sidebar, or the local
+# MDC_Master_V1.xlsx beside app.py can be used.
+#
+# No cache is used: when the local Excel is edited/replaced,
+# the next Streamlit rerun reads the latest values.
 # ------------------------------------------------------------
-@st.cache_data
-def load_master():
-    configs = pd.read_excel(MASTER_FILE, sheet_name="Configurations")
-    components = pd.read_excel(MASTER_FILE, sheet_name="Components")
-    accessories = pd.read_excel(MASTER_FILE, sheet_name="Accessories")
-    pdus = pd.read_excel(MASTER_FILE, sheet_name="PDUs")
 
-    # Fill merged TYPE cells downward
-    # Example:
-    # BASIC -> BASIC -> BASIC -> BASIC
-    # METERED -> METERED -> ...
-    # SWITCHED -> SWITCHED -> ...
-    pdus["Type"] = pdus["Type"].ffill()
+def _to_number(value):
+    if pd.isna(value):
+        return None
+    if isinstance(value, (int, float)):
+        return float(value)
+
+    text = str(value).strip()
+    if not text or text.lower() in {"nan", "none", "xxx", "-", "n/a"}:
+        return None
+
+    text = re.sub(r"[^0-9.\\-]", "", text)
+    try:
+        return float(text)
+    except (TypeError, ValueError):
+        return None
+
+
+def _find_column(df, candidates):
+    normalized = {
+        re.sub(r"[^a-z0-9]", "", str(c).lower()): c
+        for c in df.columns
+    }
+    for candidate in candidates:
+        key = re.sub(r"[^a-z0-9]", "", candidate.lower())
+        if key in normalized:
+            return normalized[key]
+    return None
+
+
+def _clean_columns(df):
+    df = df.copy()
+    df.columns = [str(c).strip().replace("\\n", " ") for c in df.columns]
+    return df
+
+
+def _normalise_master_tables(configs, components, accessories, pdus):
+    configs = _clean_columns(configs)
+    components = _clean_columns(components)
+    accessories = _clean_columns(accessories)
+    pdus = _clean_columns(pdus)
+
+    # Configuration columns
+    for target, candidates in {
+        "MDC Type": ["MDC Type", "MDC_Type", "MDC"],
+        "Configuration": ["Configuration", "Config", "Config Name"],
+    }.items():
+        source = _find_column(configs, candidates)
+        if source and source != target:
+            configs[target] = configs[source]
+
+    cost_col = _find_column(
+        configs,
+        ["Base Cost", "Standard Cost", "Factory Cost", "COGS", "Cost", "Unit Cost"]
+    )
+    if cost_col:
+        configs["Base Cost"] = configs[cost_col].apply(_to_number)
+    elif len(configs.columns):
+        configs["Base Cost"] = configs[configs.columns[-1]].apply(_to_number)
+    else:
+        configs["Base Cost"] = pd.NA
+
+    if "Configuration Title" not in configs.columns:
+        configs["Configuration Title"] = configs["Configuration"].astype(str)
+    if "Status" not in configs.columns:
+        configs["Status"] = ""
+
+    # Component columns
+    aliases = {
+        "Part Code": ["Part Code", "Part Number", "Part No", "PartNo", "SKU"],
+        "Description": ["Description", "Component Description", "Item Description"],
+        "Quantity": ["Quantity", "Qty"],
+        "UOM": ["UOM", "Unit", "Unit of Measure"],
+        "MDC Type": ["MDC Type", "MDC_Type", "MDC"],
+        "Configuration": ["Configuration", "Config", "Config Name"],
+    }
+    for target, candidates in aliases.items():
+        source = _find_column(components, candidates)
+        if source and source != target:
+            components[target] = components[source]
+
+    cost_col = _find_column(
+        components,
+        ["Unit Cost", "Standard Cost", "Factory Cost", "COGS", "Cost"]
+    )
+    if cost_col:
+        components["Unit Cost"] = components[cost_col].apply(_to_number)
+    elif len(components.columns):
+        components["Unit Cost"] = components[components.columns[-1]].apply(_to_number)
+    else:
+        components["Unit Cost"] = pd.NA
+
+    if "Quantity" in components.columns:
+        components["Quantity"] = components["Quantity"].apply(_to_number)
+    else:
+        components["Quantity"] = 1.0
+
+    # Accessory columns
+    for target, candidates in {
+        "Part Code": ["Part Code", "Part Number", "Part No", "PartNo", "SKU"],
+        "Description": ["Description", "Component Description", "Item Description"],
+        "Default Quantity": ["Default Quantity", "Quantity", "Qty"],
+        "UOM": ["UOM", "Unit", "Unit of Measure"],
+    }.items():
+        source = _find_column(accessories, candidates)
+        if source and source != target:
+            accessories[target] = accessories[source]
+
+    cost_col = _find_column(
+        accessories,
+        ["Unit Cost", "Standard Cost", "Factory Cost", "COGS", "Cost"]
+    )
+    if cost_col:
+        accessories["Unit Cost"] = accessories[cost_col].apply(_to_number)
+    elif len(accessories.columns):
+        accessories["Unit Cost"] = accessories[accessories.columns[-1]].apply(_to_number)
+    else:
+        accessories["Unit Cost"] = pd.NA
+
+    # PDU columns
+    for target, candidates in {
+        "Part Code": ["Part Code", "Part Number", "Part No", "PartNo", "SKU"],
+        "Description": ["Description", "Component Description", "Item Description"],
+        "UOM": ["UOM", "Unit", "Unit of Measure"],
+        "Type": ["Type", "PDU Type"],
+        "C13": ["C13"],
+        "C19": ["C19"],
+    }.items():
+        source = _find_column(pdus, candidates)
+        if source and source != target:
+            pdus[target] = pdus[source]
+
+    cost_col = _find_column(
+        pdus,
+        ["Unit Cost", "Standard Cost", "Factory Cost", "COGS", "Cost"]
+    )
+    if cost_col:
+        pdus["Unit Cost"] = pdus[cost_col].apply(_to_number)
+    elif len(pdus.columns):
+        pdus["Unit Cost"] = pdus[pdus.columns[-1]].apply(_to_number)
+    else:
+        pdus["Unit Cost"] = pd.NA
+
+    if "Type" in pdus.columns:
+        pdus["Type"] = pdus["Type"].ffill()
 
     return configs, components, accessories, pdus
 
-configs_df, components_df, accessories_df, pdus_df = load_master()
+
+def load_master_from_excel(excel_source):
+    excel = pd.ExcelFile(excel_source)
+    sheets = {str(s).strip().lower(): s for s in excel.sheet_names}
+    required = ["configurations", "components", "accessories", "pdus"]
+    missing = [s for s in required if s not in sheets]
+
+    if missing:
+        raise ValueError(
+            "Missing required Excel sheets: "
+            + ", ".join(x.title() for x in missing)
+            + ". Expected: Configurations, Components, Accessories, PDUs."
+        )
+
+    configs = pd.read_excel(excel, sheet_name=sheets["configurations"])
+    components = pd.read_excel(excel, sheet_name=sheets["components"])
+    accessories = pd.read_excel(excel, sheet_name=sheets["accessories"])
+    pdus = pd.read_excel(excel, sheet_name=sheets["pdus"])
+
+    return _normalise_master_tables(configs, components, accessories, pdus)
+
+
+# ------------------------------------------------------------
+# Select the single master workbook
+# ------------------------------------------------------------
+st.sidebar.header("Excel Master Data")
+
+uploaded_master = st.sidebar.file_uploader(
+    "Upload Master Excel",
+    type=["xlsx", "xls"],
+    help="Upload the single master workbook containing the four data sheets."
+)
+
+if uploaded_master is not None:
+    try:
+        configs_df, components_df, accessories_df, pdus_df = load_master_from_excel(
+            BytesIO(uploaded_master.getvalue())
+        )
+        st.sidebar.success(f"Loaded: {uploaded_master.name}")
+    except Exception as exc:
+        st.error(f"Unable to read the uploaded Excel workbook: {exc}")
+        st.stop()
+else:
+    if not os.path.exists(MASTER_FILE):
+        st.error(
+            f"Master Excel file not found: {MASTER_FILE}. "
+            "Upload it from the sidebar or place MDC_Master_V1.xlsx beside app.py."
+        )
+        st.stop()
+
+    try:
+        # Deliberately NOT cached. This means edits to the Excel file are
+        # picked up on the next Streamlit rerun.
+        configs_df, components_df, accessories_df, pdus_df = load_master_from_excel(
+            MASTER_FILE
+        )
+        modified = datetime.fromtimestamp(
+            os.path.getmtime(MASTER_FILE)
+        ).strftime("%d-%m-%Y %H:%M:%S")
+        st.sidebar.caption(f"Local workbook: {os.path.basename(MASTER_FILE)}")
+        st.sidebar.caption(f"Excel last modified: {modified}")
+    except Exception as exc:
+        st.error(f"Unable to read the master Excel workbook: {exc}")
+        st.stop()
+
+if st.sidebar.button("🔄 Reload Excel"):
+    st.rerun()
 
 # ------------------------------------------------------------
 # Session state
@@ -550,8 +759,8 @@ def build_bom():
 
     # Configuration BOM
     for _, r in selected_components().iterrows():
-        cost = r["Unit Cost"]
-        qty = float(r["Quantity"])
+        cost = _to_number(r["Unit Cost"])
+        qty = _to_number(r["Quantity"]) or 0.0
         rows.append({
             "S.No.": len(rows) + 1,
             "Component Type": "Base (Configuration)",
@@ -569,7 +778,7 @@ def build_bom():
         part = str(r["Part Code"])
         qty = float(st.session_state.accessory_qty.get(part, 0))
         if qty > 0:
-            cost = r["Unit Cost"]
+            cost = _to_number(r["Unit Cost"])
             rows.append({
                 "S.No.": len(rows) + 1,
                 "Component Type": "Optional Accessory",
@@ -587,7 +796,7 @@ def build_bom():
         part = str(r["Part Code"])
         qty = float(st.session_state.pdu_qty.get(part, 0))
         if qty > 0:
-            cost = r["Unit Cost"]
+            cost = _to_number(r["Unit Cost"])
             desc = f'{r["Description"]} | Type: {r["Type"]} | C13: {r["C13"]} | C19: {r["C19"]}'
             rows.append({
                 "S.No.": len(rows) + 1,
@@ -603,9 +812,37 @@ def build_bom():
 
     return pd.DataFrame(rows)
 
-def cost_summary(bom):
+def _excel_configuration_factory_cost():
+    """
+    Configuration factory cost source-of-truth.
+
+    If every selected configuration component has a valid Excel cost and
+    quantity, use SUM(Unit Cost * Quantity). This matches the BOQ and avoids
+    hardcoded configuration prices.
+
+    If component costs are incomplete, fall back to the configuration-level
+    Base Cost / Standard Cost from the Excel workbook.
+    """
     cfg = selected_config_record()
-    base_cost = float(cfg["Base Cost"]) if cfg is not None and pd.notna(cfg["Base Cost"]) else 0.0
+    selected = selected_components().copy()
+
+    if not selected.empty:
+        selected["_qty"] = selected["Quantity"].apply(_to_number)
+        selected["_cost"] = selected["Unit Cost"].apply(_to_number)
+
+        if selected["_qty"].notna().all() and selected["_cost"].notna().all():
+            return float((selected["_qty"] * selected["_cost"]).sum())
+
+    if cfg is not None and "Base Cost" in cfg.index:
+        value = _to_number(cfg["Base Cost"])
+        if value is not None:
+            return float(value)
+
+    return 0.0
+
+
+def cost_summary(bom):
+    base_cost = _excel_configuration_factory_cost()
 
     optional_cost = 0.0
     pdu_cost = 0.0
@@ -1787,6 +2024,11 @@ warranty_pct = st.session_state.warranty_pct
 
 if is_internal:
     st.header("6. Cost Summary — Internal Only")
+    st.caption(
+        "Factory Cost is read from the master Excel. Complete configuration "
+        "component costs are summed from Unit Cost × Quantity; configuration "
+        "standard/Base Cost is used only as a fallback."
+    )
 
     a, b, c, d = st.columns(4)
     with a:
