@@ -360,34 +360,28 @@ init_tracking_db()
 # ------------------------------------------------------------
 
 def _to_number(value):
-    """Convert Excel numeric/currency/formula-result values to float.
-
-    Handles real Excel numbers plus strings such as:
-    309736.1296, "309,736.1296", "₹ 309736.1296", "#N/A", "XXX".
-    Excel error/blank placeholders return None.
-    """
+    """Convert an Excel numeric/currency cell to float without losing decimals."""
     if value is None:
         return None
+    try:
+        if pd.isna(value):
+            return None
+    except Exception:
+        pass
+
     if isinstance(value, bool):
         return None
     if isinstance(value, (int, float)):
-        try:
-            if pd.isna(value):
-                return None
-            return float(value)
-        except Exception:
-            return None
+        return float(value)
 
-    text = str(value).replace("\xa0", " ").strip()
-    if not text:
+    text = str(value).strip()
+    if not text or text.lower() in {
+        "nan", "none", "null", "xxx", "-", "n/a", "#n/a", "na"
+    }:
         return None
 
-    upper = text.upper()
-    if upper in {"NAN", "NONE", "NULL", "XXX", "-", "N/A", "NA", "#N/A", "#VALUE!", "#REF!", "#DIV/0!"}:
-        return None
-
-    # Remove common currency/thousands separators while preserving signs/decimals.
-    text = text.replace(",", "").replace("₹", "").replace("$", "").replace("€", "")
+    # Handles values such as "₹ 309,736.1296", "309736.1296", etc.
+    text = text.replace(",", "")
     match = re.search(r"[-+]?\d+(?:\.\d+)?", text)
     if not match:
         return None
@@ -400,335 +394,268 @@ def _to_number(value):
 def _clean_text(value):
     if value is None:
         return ""
-    text = str(value).replace("\xa0", " ").strip()
-    if text.lower() in {"nan", "none", "null"}:
-        return ""
-    return text
+    try:
+        if pd.isna(value):
+            return ""
+    except Exception:
+        pass
+    return str(value).replace("\xa0", " ").replace("\n", " ").strip()
 
 
-def _normalise_part_code(value):
-    if value is None:
-        return ""
-    if isinstance(value, float) and value.is_integer():
-        return str(int(value))
+def _part_code(value):
+    """Keep Excel part numbers exactly usable as strings."""
     text = _clean_text(value)
+    if not text:
+        return ""
+    # Excel may expose numeric-looking part numbers as floats.
+    if re.fullmatch(r"\d+\.0", text):
+        text = text[:-2]
     return text
 
 
 def _solution_number(text):
-    """Return solution number from strings such as SOLUTION 1 / SOLUTION 4."""
-    m = re.search(r"SOLUTION\s*(\d+)", _clean_text(text).upper())
-    return int(m.group(1)) if m else None
-
-
-def _solution_title(text):
-    text = _clean_text(text)
-    if not text:
-        return ""
-    return re.sub(r"^SOLUTION\s*\d+\s*", "", text, flags=re.I).strip(" -\n")
-
-
-def _make_solution_title(solution_no, raw_title):
-    title = _solution_title(raw_title)
-    if title:
-        return title
-    return f"Solution {solution_no}"
-
-
-def _read_single_sheet_mdc_boq(excel_source):
-    """Read the supplied MDC BOQ workbook exactly as structured.
-
-    The supplied 01.09.2026 workbook is NOT a four-sheet workbook. It has one
-    sheet named '1R MDC (4 Configs) BOM' containing four side-by-side solution
-    blocks:
-
-      Solution 1: columns A:E
-      Solution 3: columns F:J
-      Solution 2: columns A:E later in the sheet
-      Solution 4: columns F:J later in the sheet
-
-    For each solution block the final column of the block (E or J) is the
-    component cost. #N/A/blank values are intentionally treated as unknown,
-    not as zero. Optional accessories use column E; PDU catalogue prices use
-    column F.
-    """
-    wb = openpyxl.load_workbook(excel_source, data_only=True, read_only=False)
-    if not wb.sheetnames:
-        raise ValueError("The Excel workbook contains no worksheets.")
-
-    # Prefer the known MDC BOM sheet, otherwise use the first sheet.
-    ws = wb["1R MDC (4 Configs) BOM"] if "1R MDC (4 Configs) BOM" in wb.sheetnames else wb[wb.sheetnames[0]]
-
-    configs = []
-    component_rows = []
-    accessory_rows = []
-    pdu_rows = []
-
-    max_row = ws.max_row
-    max_col = ws.max_column
-
-    # Locate every SOLUTION heading. Each heading identifies the beginning of
-    # a 5-column solution block: part, description, qty, uom, cost.
-    solution_starts = []
-    for row_idx in range(1, max_row + 1):
-        for col_idx in (1, 6):
-            if col_idx <= max_col:
-                value = ws.cell(row_idx, col_idx).value
-                no = _solution_number(value)
-                if no is not None:
-                    solution_starts.append((row_idx, col_idx, no, value))
-
-    # Deduplicate accidental repeated headings while preserving sheet order.
-    seen = set()
-    solution_starts = [x for x in solution_starts if not ((x[0], x[1]) in seen or seen.add((x[0], x[1])))]
-    solution_starts.sort(key=lambda x: (x[0], x[1]))
-
-    if not solution_starts:
-        raise ValueError("No SOLUTION headings were found in the MDC BOQ worksheet.")
-
-    # Determine the end of each solution block: the next solution heading in
-    # the same column, or the optional/PDU section, or the worksheet end.
-    for idx, (start_row, start_col, solution_no, heading) in enumerate(solution_starts):
-        same_col_next = [x[0] for x in solution_starts[idx + 1:] if x[1] == start_col]
-        next_row = min(same_col_next) if same_col_next else max_row + 1
-
-        # A later section heading ends all solution BOM blocks.
-        for r in range(start_row + 1, next_row):
-            left = _clean_text(ws.cell(r, 1).value).upper()
-            if "OTHER OPTIONAL ITEMS" in left or "SINGLE PHASE PDU" in left:
-                next_row = r
-                break
-
-        config_name = f"Configuration {solution_no}"
-        configs.append({
-            "MDC Type": "Single Rack",
-            "Configuration": config_name,
-            "Configuration Title": _make_solution_title(solution_no, heading),
-            "Base Cost": None,
-            "Status": "REAL EXCEL DATA",
-        })
-
-        # Header is normally start_row + 1. Data starts after PART NUMBER row.
-        data_start = start_row + 2
-        # Cost is always the last column of the five-column block.
-        cost_col = start_col + 4
-        part_col = start_col
-        desc_col = start_col + 1
-        qty_col = start_col + 2
-        uom_col = start_col + 3
-
-        for r in range(data_start, next_row):
-            part = _normalise_part_code(ws.cell(r, part_col).value)
-            desc = _clean_text(ws.cell(r, desc_col).value)
-            qty_raw = ws.cell(r, qty_col).value
-            uom = _clean_text(ws.cell(r, uom_col).value) or "EA"
-            cost_raw = ws.cell(r, cost_col).value
-
-            # Completely blank rows are separators and should not enter BOM.
-            if not part and not desc and qty_raw is None and cost_raw is None:
-                continue
-            if not desc:
-                continue
-
-            qty = _to_number(qty_raw)
-            if qty is None:
-                qty = 1.0
-
-            component_rows.append({
-                "MDC Type": "Single Rack",
-                "Configuration": config_name,
-                "Part Code": part,
-                "Description": desc,
-                "Quantity": qty,
-                "UOM": uom,
-                "Unit Cost": _to_number(cost_raw),
-                "Pricing Status": _clean_text(cost_raw) if _to_number(cost_raw) is None else "EXCEL COST",
-            })
-
-    # Multirack remains available in the existing UI as a future/placeholder
-    # selection, but there is no multirack data in this supplied workbook.
-    for no in range(1, 10):
-        configs.append({
-            "MDC Type": "Multirack",
-            "Configuration": f"Configuration {no}",
-            "Configuration Title": f"Configuration {no} — Future Multirack",
-            "Base Cost": None,
-            "Status": "PLACEHOLDER",
-        })
-
-    # Optional accessories section: A:E. The fifth column is the cost.
-    optional_start = None
-    pdu_start = None
-    for r in range(1, max_row + 1):
-        a = _clean_text(ws.cell(r, 1).value).upper()
-        if "OTHER OPTIONAL ITEMS" in a and optional_start is None:
-            optional_start = r
-        if "SINGLE PHASE PDU" in a and pdu_start is None:
-            pdu_start = r
-
-    if optional_start is not None:
-        optional_end = pdu_start if pdu_start is not None else max_row + 1
-        for r in range(optional_start + 1, optional_end):
-            part = _normalise_part_code(ws.cell(r, 1).value)
-            desc = _clean_text(ws.cell(r, 2).value)
-            qty = _to_number(ws.cell(r, 3).value)
-            uom = _clean_text(ws.cell(r, 4).value) or "EA"
-            cost_raw = ws.cell(r, 5).value
-            if not desc:
-                continue
-            accessory_rows.append({
-                "Part Code": part,
-                "Description": desc,
-                "Default Quantity": qty if qty is not None else 1.0,
-                "UOM": uom,
-                "Unit Cost": _to_number(cost_raw),
-                "Pricing Status": _clean_text(cost_raw) if _to_number(cost_raw) is None else "EXCEL COST",
-            })
-
-    # PDU catalogue: columns A:F, with C13/C19/TYPE in C:E and cost in F.
-    if pdu_start is not None:
-        for r in range(pdu_start + 1, max_row + 1):
-            part = _normalise_part_code(ws.cell(r, 1).value)
-            desc = _clean_text(ws.cell(r, 2).value)
-            c13 = ws.cell(r, 3).value
-            c19 = ws.cell(r, 4).value
-            item_type = _clean_text(ws.cell(r, 5).value)
-            cost_raw = ws.cell(r, 6).value
-            if not desc:
-                continue
-
-            pdu_rows.append({
-                "Part Code": part,
-                "Description": desc,
-                "C13": c13,
-                "C19": c19,
-                "Type": item_type,
-                "UOM": "EA",
-                "Unit Cost": _to_number(cost_raw),
-                "Pricing Status": _clean_text(cost_raw) if _to_number(cost_raw) is None else "EXCEL COST",
-            })
-
-        # Excel uses blank TYPE cells below the first BASIC/METERED/SWITCHED
-        # row. Forward-fill them so every PDU has the correct type.
-        current_type = ""
-        for row in pdu_rows:
-            if row["Type"]:
-                current_type = row["Type"].upper()
-            row["Type"] = current_type or "OTHER"
-
-    configs_df = pd.DataFrame(configs)
-    components_df = pd.DataFrame(component_rows)
-    accessories_df = pd.DataFrame(accessory_rows)
-    pdus_df = pd.DataFrame(pdu_rows)
-
-    # Ensure stable columns even if a section is empty.
-    for df, columns in [
-        (configs_df, ["MDC Type", "Configuration", "Configuration Title", "Base Cost", "Status"]),
-        (components_df, ["MDC Type", "Configuration", "Part Code", "Description", "Quantity", "UOM", "Unit Cost", "Pricing Status"]),
-        (accessories_df, ["Part Code", "Description", "Default Quantity", "UOM", "Unit Cost", "Pricing Status"]),
-        (pdus_df, ["Part Code", "Description", "C13", "C19", "Type", "UOM", "Unit Cost", "Pricing Status"]),
-    ]:
-        for col in columns:
-            if col not in df.columns:
-                df[col] = pd.NA
-        # Put columns in the intended order.
-        df = df[columns]
-
-    # IMPORTANT: Base Cost is the sum of the numeric component line costs in
-    # each solution. This is the only complete solution-cost calculation
-    # possible from this workbook because there is no separate configuration
-    # total-cost field. Unknown #N/A lines are NOT silently treated as zero.
-    for i, cfg in configs_df.iterrows():
-        if cfg["MDC Type"] != "Single Rack":
-            continue
-        selected = components_df[components_df["Configuration"] == cfg["Configuration"]]
-        numeric = selected["Unit Cost"].apply(_to_number)
-        qty = selected["Quantity"].apply(_to_number).fillna(1.0)
-        if not selected.empty and numeric.notna().any():
-            # Base Cost is a complete sum only when every BOM line has a
-            # numeric cost. Otherwise keep it None and show XXX for total cost.
-            if numeric.notna().all():
-                configs_df.loc[i, "Base Cost"] = float((numeric * qty).sum())
-            else:
-                configs_df.loc[i, "Base Cost"] = pd.NA
-
-    return configs_df, components_df, accessories_df, pdus_df
+    match = re.search(r"SOLUTION\s*(\d+)", _clean_text(text), re.I)
+    return int(match.group(1)) if match else None
 
 
 def load_master_from_excel(excel_source):
-    """Load either the supplied single-sheet MDC BOQ or the older 4-sheet format."""
-    if isinstance(excel_source, (str, bytes)):
-        excel = pd.ExcelFile(excel_source)
-        sheet_names = [str(s).strip() for s in excel.sheet_names]
-    else:
-        excel = pd.ExcelFile(excel_source)
-        sheet_names = [str(s).strip() for s in excel.sheet_names]
+    """
+    Read the real supplied MDC BOQ layout.
 
-    normalized = {s.lower(): s for s in sheet_names}
-    required_old = {"configurations", "components", "accessories", "pdus"}
+    Returns the four DataFrames expected by the existing application:
+      configs_df, components_df, accessories_df, pdus_df
 
-    # The current real workbook has one sheet called 1R MDC (4 Configs) BOM.
-    if "1r mdc (4 configs) bom" in normalized or not required_old.issubset(set(normalized)):
-        # Re-open from the original source with openpyxl so Excel's displayed
-        # values/formula results are preserved exactly, including #N/A.
-        return _read_single_sheet_mdc_boq(excel_source)
+    Every BOM line gets its price from the actual LAST column of its Excel
+    solution block. Therefore:
+      Solution 1/2 cost = column E
+      Solution 3/4 cost = column J
 
-    # Backward-compatible support for the old normalized four-sheet workbook.
-    configs = pd.read_excel(excel, sheet_name=normalized["configurations"])
-    components = pd.read_excel(excel, sheet_name=normalized["components"])
-    accessories = pd.read_excel(excel, sheet_name=normalized["accessories"])
-    pdus = pd.read_excel(excel, sheet_name=normalized["pdus"])
+    Blank/#N/A costs remain None. They are never converted to a fake zero.
+    """
+    # Read both cached/displayed values and formulas. Normally data_only=True
+    # is sufficient and is what we use for the application.
+    try:
+        raw = pd.read_excel(excel_source, sheet_name=0, header=None, dtype=object)
+    except Exception as exc:
+        raise ValueError(f"Could not open the MDC BOQ workbook: {exc}") from exc
 
-    def clean_columns(df):
-        df = df.copy()
-        df.columns = [str(c).strip().replace("\n", " ") for c in df.columns]
-        return df
+    if raw.empty or raw.shape[1] < 10:
+        raise ValueError(
+            "The MDC BOQ must contain the 10-column solution layout (A:J)."
+        )
 
-    def find_column(df, candidates):
-        normalized_cols = {
-            re.sub(r"[^a-z0-9]", "", str(c).lower()): c for c in df.columns
-        }
-        for candidate in candidates:
-            key = re.sub(r"[^a-z0-9]", "", candidate.lower())
-            if key in normalized_cols:
-                return normalized_cols[key]
-        return None
+    # --------------------------------------------------------
+    # 1) Parse the four solution blocks
+    # --------------------------------------------------------
+    solutions = {}
+    active = {"left": None, "right": None}
 
-    configs, components, accessories, pdus = map(clean_columns, (configs, components, accessories, pdus))
+    for row_idx in range(len(raw)):
+        left_header = _solution_number(raw.iat[row_idx, 0])
+        right_header = _solution_number(raw.iat[row_idx, 5])
 
-    mappings = [
-        (configs, {"MDC Type": ["MDC Type", "MDC_Type", "MDC"], "Configuration": ["Configuration", "Config", "Config Name"]}),
-        (components, {"Part Code": ["Part Code", "Part Number", "Part No", "PartNo", "SKU"], "Description": ["Description", "Component Description", "Item Description"], "Quantity": ["Quantity", "Qty"], "UOM": ["UOM", "Unit", "Unit of Measure"], "MDC Type": ["MDC Type", "MDC_Type", "MDC"], "Configuration": ["Configuration", "Config", "Config Name"]}),
-        (accessories, {"Part Code": ["Part Code", "Part Number", "Part No", "PartNo", "SKU"], "Description": ["Description", "Component Description", "Item Description"], "Default Quantity": ["Default Quantity", "Quantity", "Qty"], "UOM": ["UOM", "Unit", "Unit of Measure"]}),
-        (pdus, {"Part Code": ["Part Code", "Part Number", "Part No", "PartNo", "SKU"], "Description": ["Description", "Component Description", "Item Description"], "UOM": ["UOM", "Unit", "Unit of Measure"], "Type": ["Type", "PDU Type"], "C13": ["C13"], "C19": ["C19"]}),
-    ]
-    for df, alias_map in mappings:
-        for target, candidates in alias_map.items():
-            source = find_column(df, candidates)
-            if source and source != target:
-                df[target] = df[source]
+        if left_header:
+            active["left"] = left_header
+            solutions.setdefault(left_header, {
+                "title": _clean_text(raw.iat[row_idx, 0]),
+                "rows": []
+            })
+        if right_header:
+            active["right"] = right_header
+            solutions.setdefault(right_header, {
+                "title": _clean_text(raw.iat[row_idx, 5]),
+                "rows": []
+            })
 
+        # Stop solution parsing when the optional section starts.
+        marker = _clean_text(raw.iat[row_idx, 0]).upper()
+        if marker.startswith("OTHER OPTIONAL ITEMS") or marker.startswith("SINGLE PHASE PDU"):
+            break
+
+        # Skip the solution title/header rows themselves.
+        if "PART NUMBER" in _clean_text(raw.iat[row_idx, 0]).upper():
+            continue
+        if "PART NUMBER" in _clean_text(raw.iat[row_idx, 5]).upper():
+            continue
+
+        # Left solution block A:E. Cost is E (index 4).
+        sol = active["left"]
+        if sol and any(raw.iat[row_idx, c] is not None for c in range(5)):
+            desc = _clean_text(raw.iat[row_idx, 1])
+            part = _part_code(raw.iat[row_idx, 0])
+            qty = _to_number(raw.iat[row_idx, 2])
+            uom = _clean_text(raw.iat[row_idx, 3])
+            cost = _to_number(raw.iat[row_idx, 4])
+            if desc or part or qty is not None or cost is not None:
+                solutions[sol]["rows"].append({
+                    "Part Code": part,
+                    "Description": desc,
+                    "Quantity": qty if qty is not None else 1.0,
+                    "UOM": uom,
+                    "Unit Cost": cost,
+                })
+
+        # Right solution block F:J. Cost is J (index 9).
+        sol = active["right"]
+        if sol and any(raw.iat[row_idx, c] is not None for c in range(5, 10)):
+            desc = _clean_text(raw.iat[row_idx, 6])
+            part = _part_code(raw.iat[row_idx, 5])
+            qty = _to_number(raw.iat[row_idx, 7])
+            uom = _clean_text(raw.iat[row_idx, 8])
+            cost = _to_number(raw.iat[row_idx, 9])
+            if desc or part or qty is not None or cost is not None:
+                solutions[sol]["rows"].append({
+                    "Part Code": part,
+                    "Description": desc,
+                    "Quantity": qty if qty is not None else 1.0,
+                    "UOM": uom,
+                    "Unit Cost": cost,
+                })
+
+    # The real workbook has solutions 1-4. Fail loudly if the structure changed.
+    missing_solutions = [n for n in range(1, 5) if n not in solutions]
+    if missing_solutions:
+        raise ValueError(
+            "Could not detect solution block(s): "
+            + ", ".join(f"Solution {n}" for n in missing_solutions)
+        )
+
+    config_rows = []
+    component_rows = []
+    for n in range(1, 5):
+        title = solutions[n]["title"]
+        # Base/factory cost is the sum of all numeric priced BOM lines in
+        # that solution. #N/A/blank lines remain unpriced and are not invented.
+        base_cost = 0.0
+        priced_count = 0
+        for item in solutions[n]["rows"]:
+            if item["Unit Cost"] is not None:
+                base_cost += item["Unit Cost"] * (item["Quantity"] or 1.0)
+                priced_count += 1
+
+        config_rows.append({
+            "MDC Type": "Single Rack",
+            "Configuration": f"Configuration {n}",
+            "Configuration Title": title,
+            "Base Cost": base_cost if priced_count else None,
+            "Priced Component Lines": priced_count,
+        })
+
+        for item in solutions[n]["rows"]:
+            component_rows.append({
+                "MDC Type": "Single Rack",
+                "Configuration": f"Configuration {n}",
+                **item,
+            })
+
+    # Keep Multirack available in the UI as future/XXX configurations.
+    for n in range(1, 10):
+        config_rows.append({
+            "MDC Type": "Multirack",
+            "Configuration": f"Configuration {n}",
+            "Configuration Title": f"Multirack Configuration {n}",
+            "Base Cost": None,
+            "Priced Component Lines": 0,
+        })
+
+    configs = pd.DataFrame(config_rows)
+    components = pd.DataFrame(component_rows)
+
+    # --------------------------------------------------------
+    # 2) Parse OTHER OPTIONAL ITEMS
+    #    These use A:E, with price in E.
+    # --------------------------------------------------------
+    accessory_rows = []
+    optional_started = False
+    for row_idx in range(len(raw)):
+        marker = _clean_text(raw.iat[row_idx, 0]).upper()
+        if marker.startswith("OTHER OPTIONAL ITEMS"):
+            optional_started = True
+            continue
+        if not optional_started:
+            continue
+        if marker.startswith("SINGLE PHASE PDU"):
+            break
+
+        part = _part_code(raw.iat[row_idx, 0])
+        desc = _clean_text(raw.iat[row_idx, 1])
+        qty = _to_number(raw.iat[row_idx, 2])
+        uom = _clean_text(raw.iat[row_idx, 3])
+        cost = _to_number(raw.iat[row_idx, 4])
+
+        if part or desc or cost is not None:
+            # Ignore accidental title/blank rows.
+            if part or cost is not None:
+                accessory_rows.append({
+                    "Part Code": part,
+                    "Description": desc,
+                    "Default Quantity": qty if qty is not None else 1.0,
+                    "UOM": uom or "EA",
+                    "Unit Cost": cost,
+                })
+
+    accessories = pd.DataFrame(accessory_rows, columns=[
+        "Part Code", "Description", "Default Quantity", "UOM", "Unit Cost"
+    ])
+
+    # --------------------------------------------------------
+    # 3) Parse Single Phase PDUs
+    #    PDU cost is column F, while C13/C19/TYPE are C/D/E.
+    # --------------------------------------------------------
+    pdu_rows = []
+    pdu_started = False
+    current_type = ""
+    for row_idx in range(len(raw)):
+        marker = _clean_text(raw.iat[row_idx, 0]).upper()
+        if marker.startswith("SINGLE PHASE PDU"):
+            pdu_started = True
+            continue
+        if not pdu_started:
+            continue
+
+        part = _part_code(raw.iat[row_idx, 0])
+        desc = _clean_text(raw.iat[row_idx, 1])
+        c13 = _to_number(raw.iat[row_idx, 2])
+        c19 = _to_number(raw.iat[row_idx, 3])
+        row_type = _clean_text(raw.iat[row_idx, 4]).upper()
+        cost = _to_number(raw.iat[row_idx, 5])
+
+        if row_type:
+            current_type = row_type
+
+        if part or desc or cost is not None:
+            if part:
+                pdu_rows.append({
+                    "Part Code": part,
+                    "Description": desc,
+                    "UOM": "EA",
+                    "Type": current_type,
+                    "C13": c13 if c13 is not None else "",
+                    "C19": c19 if c19 is not None else "",
+                    "Unit Cost": cost,
+                })
+
+    pdus = pd.DataFrame(pdu_rows, columns=[
+        "Part Code", "Description", "UOM", "Type", "C13", "C19", "Unit Cost"
+    ])
+
+    # --------------------------------------------------------
+    # 4) Final type/number cleanup
+    # --------------------------------------------------------
     for df in (configs, components, accessories, pdus):
-        cost_col = find_column(df, ["Unit Cost", "Standard Cost", "Factory Cost", "COGS", "Cost", "Base Cost"])
-        if cost_col:
-            df["Unit Cost"] = df[cost_col].apply(_to_number)
-        elif len(df.columns):
-            df["Unit Cost"] = df[df.columns[-1]].apply(_to_number)
-        else:
-            df["Unit Cost"] = pd.NA
+        for col in df.columns:
+            if df[col].dtype == object:
+                df[col] = df[col].map(lambda x: _clean_text(x) if x is not None else "")
 
-    if "Base Cost" not in configs.columns:
-        configs["Base Cost"] = configs["Unit Cost"]
-    configs["Base Cost"] = configs["Base Cost"].apply(_to_number)
-    if "Configuration Title" not in configs.columns:
-        configs["Configuration Title"] = configs["Configuration"].astype(str)
-    if "Status" not in configs.columns:
-        configs["Status"] = ""
-    if "Quantity" not in components.columns:
-        components["Quantity"] = 1.0
-    components["Quantity"] = components["Quantity"].apply(_to_number).fillna(1.0)
-    if "Type" in pdus.columns:
-        pdus["Type"] = pdus["Type"].ffill()
+    for df in (components, accessories, pdus):
+        df["Part Code"] = df["Part Code"].map(_part_code)
+
+    # Preserve actual numeric costs, including decimals like 309736.1296.
+    for df in (configs, components, accessories, pdus):
+        if "Base Cost" in df.columns:
+            df["Base Cost"] = df["Base Cost"].apply(_to_number)
+        if "Unit Cost" in df.columns:
+            df["Unit Cost"] = df["Unit Cost"].apply(_to_number)
 
     return configs, components, accessories, pdus
 
@@ -737,35 +664,36 @@ def load_master_from_excel(excel_source):
 # MASTER EXCEL FROM GITHUB / SAME REPOSITORY
 # ------------------------------------------------------------
 MASTER_CANDIDATES = [
-    os.path.join(BASE_DIR, "1 Rack SKU'S - MDC BOQ (01.09.2026).xlsx"),
     os.path.join(BASE_DIR, "1 Rack SKU'S - MDC BOQ (01.09.2026)(1).xlsx"),
+    os.path.join(BASE_DIR, "1 Rack SKU'S - MDC BOQ (01.09.2026).xlsx"),
     os.path.join(BASE_DIR, "MDC_Master_V1.xlsx"),
 ]
 
 if not any(os.path.isfile(p) for p in MASTER_CANDIDATES):
     for filename in os.listdir(BASE_DIR):
         lower = filename.lower()
-        if lower.endswith((".xlsx", ".xlsm", ".xltx", ".xltm")) and "mdc" in lower and "boq" in lower:
+        if lower.endswith((".xlsx", ".xls")) and "mdc" in lower and "boq" in lower:
             MASTER_CANDIDATES.append(os.path.join(BASE_DIR, filename))
-            break
 
 MASTER_FILE = next((p for p in MASTER_CANDIDATES if os.path.isfile(p)), None)
 
 if MASTER_FILE is None:
     st.error(
-        "Master Excel workbook not found in the GitHub repository. "
-        "Please commit the MDC BOQ Excel file in the same folder as app.py."
+        "MDC BOQ Excel workbook not found. Put the Excel file in the same folder as app.py."
     )
     st.stop()
 
 try:
-    # No cache: every Streamlit rerun reads the latest workbook.
+    # IMPORTANT: no cache. Every Streamlit rerun reads the current workbook.
     configs_df, components_df, accessories_df, pdus_df = load_master_from_excel(MASTER_FILE)
-    st.sidebar.success(f"Master Excel loaded: {os.path.basename(MASTER_FILE)}")
-    st.sidebar.caption("All BOM costs are read from the Excel BOQ cost columns.")
+    st.sidebar.success(f"MDC BOQ loaded: {os.path.basename(MASTER_FILE)}")
+    st.sidebar.caption(
+        "All component costs are read directly from the LAST cost column in the Excel BOQ."
+    )
 except Exception as exc:
-    st.error(f"Unable to read the master Excel workbook: {exc}")
+    st.error(f"Unable to read the MDC BOQ Excel workbook: {exc}")
     st.stop()
+
 
 # ------------------------------------------------------------
 # Session state
@@ -937,150 +865,129 @@ def handle_excel_download():
 
 def selected_config_record():
     match = configs_df[
-        (configs_df["MDC Type"] == st.session_state.mdc_type)
-        & (configs_df["Configuration"] == st.session_state.configuration)
+        (configs_df["MDC Type"].astype(str).str.strip() == str(st.session_state.mdc_type).strip())
+        & (configs_df["Configuration"].astype(str).str.strip() == str(st.session_state.configuration).strip())
     ]
     return match.iloc[0] if not match.empty else None
 
+
 def selected_components():
     return components_df[
-        (components_df["MDC Type"] == st.session_state.mdc_type)
-        & (components_df["Configuration"] == st.session_state.configuration)
+        (components_df["MDC Type"].astype(str).str.strip() == str(st.session_state.mdc_type).strip())
+        & (components_df["Configuration"].astype(str).str.strip() == str(st.session_state.configuration).strip())
     ].copy()
+
 
 def build_bom():
     rows = []
 
-    # Configuration BOM
     for _, r in selected_components().iterrows():
-        cost = _to_number(r["Unit Cost"])
-        qty = _to_number(r["Quantity"]) or 0.0
+        cost = _to_number(r.get("Unit Cost"))
+        qty = _to_number(r.get("Quantity")) or 1.0
         rows.append({
             "S.No.": len(rows) + 1,
             "Component Type": "Base (Configuration)",
-            "Part Code": r["Part Code"] if pd.notna(r["Part Code"]) and str(r["Part Code"]).strip() and str(r["Part Code"]).lower() != "nan" else "",
-            "Description": r["Description"],
+            "Part Code": _part_code(r.get("Part Code")),
+            "Description": _clean_text(r.get("Description")),
             "Quantity": qty,
-            "UOM": r["UOM"],
+            "UOM": _clean_text(r.get("UOM")) or "EA",
             "Unit Cost": cost,
-            "Total Cost": cost * qty if pd.notna(cost) else None,
+            "Total Cost": cost * qty if cost is not None else None,
             "Source": "Configuration",
         })
 
-    # Optional accessories
     for _, r in accessories_df.iterrows():
-        part = str(r["Part Code"])
-        qty = float(st.session_state.accessory_qty.get(part, 0))
+        part = _part_code(r.get("Part Code"))
+        qty = _to_number(st.session_state.accessory_qty.get(part, 0)) or 0.0
         if qty > 0:
-            cost = _to_number(r["Unit Cost"])
+            cost = _to_number(r.get("Unit Cost"))
             rows.append({
                 "S.No.": len(rows) + 1,
                 "Component Type": "Optional Accessory",
-                "Part Code": part if part.strip() and part.lower() != "nan" else "",
-                "Description": r["Description"],
+                "Part Code": part,
+                "Description": _clean_text(r.get("Description")),
                 "Quantity": qty,
-                "UOM": r["UOM"],
+                "UOM": _clean_text(r.get("UOM")) or "EA",
                 "Unit Cost": cost,
-                "Total Cost": cost * qty if pd.notna(cost) else None,
+                "Total Cost": cost * qty if cost is not None else None,
                 "Source": "Optional Accessory",
             })
 
-    # PDU
     for _, r in pdus_df.iterrows():
-        part = str(r["Part Code"])
-        qty = float(st.session_state.pdu_qty.get(part, 0))
+        part = _part_code(r.get("Part Code"))
+        qty = _to_number(st.session_state.pdu_qty.get(part, 0)) or 0.0
         if qty > 0:
-            cost = _to_number(r["Unit Cost"])
-            desc = f'{r["Description"]} | Type: {r["Type"]} | C13: {r["C13"]} | C19: {r["C19"]}'
+            cost = _to_number(r.get("Unit Cost"))
+            desc = _clean_text(r.get("Description"))
+            pdu_type = _clean_text(r.get("Type"))
+            c13 = r.get("C13", "")
+            c19 = r.get("C19", "")
             rows.append({
                 "S.No.": len(rows) + 1,
                 "Component Type": "PDU",
-                "Part Code": part if part.strip() and part.lower() != "nan" else "",
-                "Description": desc,
+                "Part Code": part,
+                "Description": f"{desc} | Type: {pdu_type} | C13: {c13} | C19: {c19}",
                 "Quantity": qty,
-                "UOM": r["UOM"],
+                "UOM": _clean_text(r.get("UOM")) or "EA",
                 "Unit Cost": cost,
-                "Total Cost": cost * qty if pd.notna(cost) else None,
+                "Total Cost": cost * qty if cost is not None else None,
                 "Source": "PDU",
             })
 
     return pd.DataFrame(rows)
 
+
 def _excel_configuration_factory_cost():
-    """
-    Return the configuration-level factory cost from Excel.
+    """Read/sum every numeric component cost from the selected Excel solution."""
+    selected = selected_components()
+    if selected.empty:
+        return None
 
-    IMPORTANT: The supplied master workbook has TWO different cost levels:
-      1. Configurations -> Base Cost = complete solution factory cost.
-      2. Components -> Unit Cost = cost of an individual BOM line.
+    total = 0.0
+    found = False
+    for _, row in selected.iterrows():
+        cost = _to_number(row.get("Unit Cost"))
+        qty = _to_number(row.get("Quantity")) or 1.0
+        if cost is not None:
+            total += cost * qty
+            found = True
+    return total if found else None
 
-    The configuration Base Cost must be used for the solution TOTAL.
-    We must NOT sum only the component rows with populated Unit Cost, because
-    many BOM rows intentionally have blank/XXX individual costs. Doing that
-    would produce an incomplete and therefore incorrect solution cost.
-    """
-    cfg = selected_config_record()
 
-    if cfg is not None and "Base Cost" in cfg.index:
-        value = _to_number(cfg["Base Cost"])
-        if value is not None:
-            return float(value)
-
-    # No invented fallback. If Excel has no configuration-level cost, return
-    # None so the UI shows XXX instead of silently calculating a wrong cost.
-    return None
+def _selected_optional_and_pdu_costs(bom):
+    optional_cost = 0.0
+    pdu_cost = 0.0
+    if bom is not None and not bom.empty:
+        for _, row in bom.iterrows():
+            value = row.get("Total Cost")
+            if value is None or pd.isna(value):
+                continue
+            if row.get("Source") == "Optional Accessory":
+                optional_cost += float(value)
+            elif row.get("Source") == "PDU":
+                pdu_cost += float(value)
+    return optional_cost, pdu_cost
 
 
 def cost_summary(bom):
-    """Calculate costs from the actual Excel line-item costs.
-
-    The current BOQ does not have a separate configuration-total column. The
-    authoritative cost for every BOM line is the cost cell at the end of its
-    solution block. Therefore the standard/base cost is the sum of all numeric
-    standard BOM line costs (Quantity × Unit Cost). Excel error values such as
-    #N/A remain unknown and are never converted into a fake zero price.
-    """
-    base_rows = bom[bom["Source"] == "Configuration"] if not bom.empty else pd.DataFrame()
-    optional_rows = bom[bom["Source"] == "Optional Accessory"] if not bom.empty else pd.DataFrame()
-    pdu_rows = bom[bom["Source"] == "PDU"] if not bom.empty else pd.DataFrame()
-
-    def subtotal(df):
-        if df.empty:
-            return 0.0, 0
-        numeric_cost = df["Unit Cost"].apply(_to_number)
-        qty = df["Quantity"].apply(_to_number).fillna(1.0)
-        known_mask = numeric_cost.notna()
-        total = float((numeric_cost[known_mask] * qty[known_mask]).sum())
-        unknown = int((~known_mask).sum())
-        return total, unknown
-
-    base_cost, base_unknown = subtotal(base_rows)
-    optional_cost, optional_unknown = subtotal(optional_rows)
-    pdu_cost, pdu_unknown = subtotal(pdu_rows)
-
-    total_cost = base_cost + optional_cost + pdu_cost
-
-    # Expose diagnostics for the UI without changing the existing function
-    # return signature used elsewhere in the application.
-    st.session_state["excel_unknown_cost_lines"] = (
-        base_unknown + optional_unknown + pdu_unknown
-    )
-
+    base_cost = _excel_configuration_factory_cost()
+    optional_cost, pdu_cost = _selected_optional_and_pdu_costs(bom)
+    total_cost = None if base_cost is None else base_cost + optional_cost + pdu_cost
     return base_cost, optional_cost, pdu_cost, total_cost
 
 
 def add_selling_prices(bom, total_cost, margin_pct, freight, installation):
     result = bom.copy()
 
-    # Cost-based margin conversion.
-    margin_price = total_cost / (1 - margin_pct / 100) if margin_pct < 100 else 0
-    final_selling_price = margin_price + freight + installation
+    if total_cost is None:
+        margin_price = None
+        final_selling_price = None
+    else:
+        margin_price = total_cost / (1 - margin_pct / 100) if margin_pct < 100 else 0.0
+        final_selling_price = margin_price + freight + installation
 
-    # Allocate the final selling price proportionally to known-cost BOM lines.
-    # This makes BOM Total Price reconcile to the final selling price.
     known_cost_total = result["Total Cost"].fillna(0).sum() if not result.empty else 0
-
-    if known_cost_total > 0:
+    if known_cost_total > 0 and final_selling_price is not None:
         result["Total Price"] = result["Total Cost"].fillna(0) / known_cost_total * final_selling_price
         result["Unit Price"] = result["Total Price"] / result["Quantity"]
     else:
@@ -1088,6 +995,7 @@ def add_selling_prices(bom, total_cost, margin_pct, freight, installation):
         result["Unit Price"] = pd.NA
 
     return result, margin_price, final_selling_price
+
 
 def customer_table():
     return pd.DataFrame([
