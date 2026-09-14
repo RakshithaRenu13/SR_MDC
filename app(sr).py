@@ -529,50 +529,49 @@ def load_master_from_excel(excel_source):
 
 
 # ------------------------------------------------------------
-# Select the single master workbook
+# MASTER EXCEL FROM GITHUB / SAME REPOSITORY
 # ------------------------------------------------------------
-st.sidebar.header("Excel Master Data")
+# No Excel uploader is used. The master workbook must be committed
+# to the same GitHub repository/folder as app.py.
+# The app reads the workbook directly from the deployed repository.
 
-uploaded_master = st.sidebar.file_uploader(
-    "Upload Master Excel",
-    type=["xlsx", "xls"],
-    help="Upload the single master workbook containing the four data sheets."
-)
+MASTER_CANDIDATES = [
+    os.path.join(BASE_DIR, "1 Rack SKU'S - MDC BOQ (01.09.2026).xlsx"),
+    os.path.join(BASE_DIR, "1 Rack SKU'S - MDC BOQ (01.09.2026)(1).xlsx"),
+    os.path.join(BASE_DIR, "MDC_Master_V1.xlsx"),
+]
 
-if uploaded_master is not None:
-    try:
-        configs_df, components_df, accessories_df, pdus_df = load_master_from_excel(
-            BytesIO(uploaded_master.getvalue())
-        )
-        st.sidebar.success(f"Loaded: {uploaded_master.name}")
-    except Exception as exc:
-        st.error(f"Unable to read the uploaded Excel workbook: {exc}")
-        st.stop()
-else:
-    if not os.path.exists(MASTER_FILE):
-        st.error(
-            f"Master Excel file not found: {MASTER_FILE}. "
-            "Upload it from the sidebar or place MDC_Master_V1.xlsx beside app.py."
-        )
-        st.stop()
+# Also accept an Excel file containing "MDC BOQ" in its filename.
+if not any(os.path.isfile(p) for p in MASTER_CANDIDATES):
+    for filename in os.listdir(BASE_DIR):
+        lower = filename.lower()
+        if lower.endswith((".xlsx", ".xls")) and "mdc" in lower and "boq" in lower:
+            MASTER_CANDIDATES.append(os.path.join(BASE_DIR, filename))
+            break
 
-    try:
-        # Deliberately NOT cached. This means edits to the Excel file are
-        # picked up on the next Streamlit rerun.
-        configs_df, components_df, accessories_df, pdus_df = load_master_from_excel(
-            MASTER_FILE
-        )
-        modified = datetime.fromtimestamp(
-            os.path.getmtime(MASTER_FILE)
-        ).strftime("%d-%m-%Y %H:%M:%S")
-        st.sidebar.caption(f"Local workbook: {os.path.basename(MASTER_FILE)}")
-        st.sidebar.caption(f"Excel last modified: {modified}")
-    except Exception as exc:
-        st.error(f"Unable to read the master Excel workbook: {exc}")
-        st.stop()
+MASTER_FILE = next((p for p in MASTER_CANDIDATES if os.path.isfile(p)), None)
 
-if st.sidebar.button("🔄 Reload Excel"):
-    st.rerun()
+if MASTER_FILE is None:
+    st.error(
+        "Master Excel workbook not found in the GitHub repository. "
+        "Please commit the MDC BOQ Excel file in the same folder as app.py."
+    )
+    st.stop()
+
+try:
+    # No Streamlit cache: read the repository workbook on every rerun.
+    configs_df, components_df, accessories_df, pdus_df = load_master_from_excel(
+        MASTER_FILE
+    )
+    st.sidebar.success(
+        f"Master Excel loaded: {os.path.basename(MASTER_FILE)}"
+    )
+    st.sidebar.caption(
+        "Costs are read directly from the repository Excel workbook."
+    )
+except Exception as exc:
+    st.error(f"Unable to read the master Excel workbook: {exc}")
+    st.stop()
 
 # ------------------------------------------------------------
 # Session state
