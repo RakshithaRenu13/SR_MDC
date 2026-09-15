@@ -1109,7 +1109,7 @@ def pdf_bytes(internal=False, bom=None, final_price=0.0):
         pagesize=landscape(A4),
         rightMargin=10 * mm,
         leftMargin=10 * mm,
-        topMargin=30 * mm,
+        topMargin=0 * mm,
         bottomMargin=10 * mm,
         title="Eaton MDC Solution Configurator",
     )
