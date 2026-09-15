@@ -1543,16 +1543,16 @@ def excel_bytes(
 # PDF EXPORT
 # ============================================================
 
-def pdf_bytes(
-    internal=False,
-    bom=None,
-    final_price=0.0
-):
-    """
-    Create PDF report for Sales or Internal use.
+# ============================================================
+# PDF OUTPUT
+# ============================================================
 
-    Component Type is intentionally NOT displayed.
-    Final Selling Price is always displayed.
+def pdf_bytes(internal=False, bom=None, final_price=0.0):
+    """
+    Create PDF report.
+
+    Component Type is NOT displayed in the PDF.
+    Final Selling Price is displayed clearly.
     """
 
     output = BytesIO()
@@ -1561,18 +1561,16 @@ def pdf_bytes(
         bom = build_bom()
 
     # --------------------------------------------------------
-    # GET FINAL PRICE SAFELY
+    # FINAL PRICE
     # --------------------------------------------------------
 
     try:
-        final_price = float(
-            numeric(final_price)
-        )
+        final_price = float(numeric(final_price))
     except Exception:
         final_price = 0.0
 
     # --------------------------------------------------------
-    # DOCUMENT
+    # PDF DOCUMENT
     # --------------------------------------------------------
 
     doc = SimpleDocTemplate(
@@ -1604,6 +1602,7 @@ def pdf_bytes(
         "MdcSub",
         parent=styles["Normal"],
         fontSize=9,
+        leading=11,
         alignment=TA_CENTER,
         spaceAfter=8,
     )
@@ -1627,6 +1626,10 @@ def pdf_bytes(
         alignment=TA_RIGHT,
     )
 
+    # --------------------------------------------------------
+    # STORY
+    # --------------------------------------------------------
+
     story = [
         Paragraph(
             "EATON MDC SOLUTION CONFIGURATOR",
@@ -1639,7 +1642,7 @@ def pdf_bytes(
     ]
 
     # ========================================================
-    # CUSTOMER DETAILS
+    # CUSTOMER / CONFIGURATION DETAILS
     # ========================================================
 
     info = customer_table()
@@ -1648,13 +1651,21 @@ def pdf_bytes(
 
     for _, r in info.iterrows():
 
+        field_value = clean_text(
+            r.get("Field", "")
+        )
+
+        value_value = clean_text(
+            r.get("Value", "")
+        )
+
         info_data.append([
             Paragraph(
-                f"<b>{clean_text(r['Field'])}</b>",
+                f"<b>{field_value}</b>",
                 small
             ),
             Paragraph(
-                clean_text(r["Value"]),
+                value_value,
                 small
             ),
         ])
@@ -1665,6 +1676,7 @@ def pdf_bytes(
             42 * mm,
             90 * mm
         ],
+        hAlign="LEFT",
     )
 
     info_table.setStyle(
@@ -1715,28 +1727,38 @@ def pdf_bytes(
         ])
     )
 
-    story += [
-        info_table,
-        Spacer(1, 6 * mm)
-    ]
+    story.append(info_table)
+    story.append(
+        Spacer(1, 5 * mm)
+    )
 
     # ========================================================
-    # FINAL BOQ
+    # FINAL BOQ HEADING
     # ========================================================
+
+    boq_heading_style = ParagraphStyle(
+        "BOQHeading",
+        parent=styles["Heading3"],
+        fontSize=10,
+        leading=12,
+        textColor=colors.HexColor("#003B71"),
+        spaceAfter=4,
+        spaceBefore=0,
+    )
 
     story.append(
         Paragraph(
             "FINAL BOQ",
-            styles["Heading3"]
+            boq_heading_style
         )
     )
 
-    # --------------------------------------------------------
-    # PDF HEADERS
+    # ========================================================
+    # CUSTOMER PDF HEADERS
     #
     # IMPORTANT:
-    # NO "Type" / "Component Type"
-    # --------------------------------------------------------
+    # Component Type / Type is NOT included.
+    # ========================================================
 
     if internal:
 
@@ -1764,61 +1786,69 @@ def pdf_bytes(
             "Total Price",
         ]
 
-    table_data = [headers]
+    # ========================================================
+    # BOQ TABLE DATA
+    # ========================================================
 
-    # ========================================================
-    # BOQ DATA
-    # ========================================================
+    table_data = [headers]
 
     for _, r in bom.iterrows():
 
-        desc = Paragraph(
+        description = Paragraph(
             clean_text(
-                r.get("Description")
+                r.get("Description", "")
             ),
             small
         )
 
+        serial_no = Paragraph(
+            clean_text(
+                r.get("S.No.", "")
+            ),
+            center_small
+        )
+
+        part_code = Paragraph(
+            clean_text(
+                r.get("Part Code", "")
+            ),
+            small
+        )
+
+        quantity = Paragraph(
+            clean_text(
+                r.get("Quantity", "")
+            ),
+            center_small
+        )
+
+        uom = Paragraph(
+            clean_text(
+                r.get("UOM", "")
+            ),
+            center_small
+        )
+
         if internal:
 
-            vals = [
-                Paragraph(
-                    clean_text(r.get("S.No.")),
-                    center_small
-                ),
-
-                Paragraph(
-                    clean_text(r.get("Part Code")),
-                    small
-                ),
-
-                desc,
-
-                Paragraph(
-                    clean_text(r.get("Quantity")),
-                    center_small
-                ),
-
-                Paragraph(
-                    clean_text(r.get("UOM")),
-                    center_small
-                ),
-
+            row_data = [
+                serial_no,
+                part_code,
+                description,
+                quantity,
+                uom,
                 Paragraph(
                     money(r.get("Unit Cost")),
                     right_small
                 ),
-
                 Paragraph(
                     money(r.get("Total Cost")),
                     right_small
                 ),
-
                 Paragraph(
                     money(r.get("Unit Price")),
                     right_small
                 ),
-
                 Paragraph(
                     money(r.get("Total Price")),
                     right_small
@@ -1827,41 +1857,23 @@ def pdf_bytes(
 
         else:
 
-            vals = [
-                Paragraph(
-                    clean_text(r.get("S.No.")),
-                    center_small
-                ),
-
-                Paragraph(
-                    clean_text(r.get("Part Code")),
-                    small
-                ),
-
-                desc,
-
-                Paragraph(
-                    clean_text(r.get("Quantity")),
-                    center_small
-                ),
-
-                Paragraph(
-                    clean_text(r.get("UOM")),
-                    center_small
-                ),
-
+            row_data = [
+                serial_no,
+                part_code,
+                description,
+                quantity,
+                uom,
                 Paragraph(
                     money(r.get("Unit Price")),
                     right_small
                 ),
-
                 Paragraph(
                     money(r.get("Total Price")),
                     right_small
                 ),
             ]
 
-        table_data.append(vals)
+        table_data.append(row_data)
 
     # ========================================================
     # PDF COLUMN WIDTHS
@@ -1871,10 +1883,10 @@ def pdf_bytes(
 
         widths = [
             12 * mm,   # S.No.
-            29 * mm,   # Part Code
+            30 * mm,   # Part Code
             78 * mm,   # Description
-            12 * mm,   # Qty
-            12 * mm,   # UOM
+            13 * mm,   # Qty
+            13 * mm,   # UOM
             25 * mm,   # Unit Cost
             27 * mm,   # Total Cost
             25 * mm,   # Unit Price
@@ -1886,7 +1898,7 @@ def pdf_bytes(
         widths = [
             13 * mm,   # S.No.
             32 * mm,   # Part Code
-            91 * mm,   # Description
+            92 * mm,   # Description
             13 * mm,   # Qty
             13 * mm,   # UOM
             28 * mm,   # Unit Price
@@ -1904,7 +1916,407 @@ def pdf_bytes(
         hAlign="CENTER",
     )
 
-    boq_table.setStyle()
+    # ========================================================
+    # BOQ TABLE STYLE
+    #
+    # Explicit coordinates prevent column mismatch.
+    # ========================================================
+
+    boq_style_commands = [
+        # Header
+        (
+            "BACKGROUND",
+            (0, 0),
+            (-1, 0),
+            colors.HexColor("#003B71")
+        ),
+
+        (
+            "TEXTCOLOR",
+            (0, 0),
+            (-1, 0),
+            colors.white
+        ),
+
+        (
+            "FONTNAME",
+            (0, 0),
+            (-1, 0),
+            "Helvetica-Bold"
+        ),
+
+        (
+            "FONTSIZE",
+            (0, 0),
+            (-1, -1),
+            7
+        ),
+
+        # Grid
+        (
+            "GRID",
+            (0, 0),
+            (-1, -1),
+            0.3,
+            colors.grey
+        ),
+
+        # Vertical alignment
+        (
+            "VALIGN",
+            (0, 0),
+            (-1, -1),
+            "MIDDLE"
+        ),
+
+        # S.No.
+        (
+            "ALIGN",
+            (0, 0),
+            (0, -1),
+            "CENTER"
+        ),
+
+        # Qty
+        (
+            "ALIGN",
+            (3, 1),
+            (3, -1),
+            "CENTER"
+        ),
+
+        # UOM
+        (
+            "ALIGN",
+            (4, 1),
+            (4, -1),
+            "CENTER"
+        ),
+
+        # Money columns
+        (
+            "ALIGN",
+            (5, 1),
+            (-1, -1),
+            "RIGHT"
+        ),
+
+        # Padding
+        (
+            "LEFTPADDING",
+            (0, 0),
+            (-1, -1),
+            3
+        ),
+
+        (
+            "RIGHTPADDING",
+            (0, 0),
+            (-1, -1),
+            3
+        ),
+
+        (
+            "TOPPADDING",
+            (0, 0),
+            (-1, -1),
+            3
+        ),
+
+        (
+            "BOTTOMPADDING",
+            (0, 0),
+            (-1, -1),
+            3
+        ),
+    ]
+
+    boq_table.setStyle(
+        TableStyle(
+            boq_style_commands
+        )
+    )
+
+    story.append(boq_table)
+
+    story.append(
+        Spacer(1, 5 * mm)
+    )
+
+    # ========================================================
+    # PRICE SUMMARY
+    # ========================================================
+
+    if internal:
+
+        summary_data = [
+            [
+                "Base Cost",
+                money(base_cost),
+                "Optional Cost",
+                money(optional_cost),
+            ],
+            [
+                "PDU Cost",
+                money(pdu_cost),
+                "Total Cost",
+                money(total_cost),
+            ],
+            [
+                "Margin %",
+                f"{margin_pct:.2f}%",
+                "Margin Price",
+                money(margin_price),
+            ],
+            [
+                "Freight",
+                money(freight),
+                "Installation",
+                money(installation),
+            ],
+            [
+                "Warranty %",
+                f"{warranty_pct:.2f}%",
+                "Warranty Amount",
+                money(
+                    margin_price
+                    * warranty_pct
+                    / 100
+                ),
+            ],
+        ]
+
+        summary_table = Table(
+            summary_data,
+            colWidths=[
+                38 * mm,
+                42 * mm,
+                45 * mm,
+                45 * mm,
+            ],
+            hAlign="RIGHT",
+        )
+
+    else:
+
+        summary_data = [
+            [
+                "FINAL SELLING PRICE",
+                money(final_price)
+            ]
+        ]
+
+        summary_table = Table(
+            summary_data,
+            colWidths=[
+                55 * mm,
+                45 * mm
+            ],
+            hAlign="RIGHT",
+        )
+
+    # ========================================================
+    # SUMMARY STYLE
+    # ========================================================
+
+    summary_style = [
+        (
+            "GRID",
+            (0, 0),
+            (-1, -1),
+            0.4,
+            colors.grey
+        ),
+
+        (
+            "BACKGROUND",
+            (0, 0),
+            (-1, -1),
+            colors.HexColor("#F4F8FC")
+        ),
+
+        (
+            "FONTNAME",
+            (0, 0),
+            (-1, -1),
+            "Helvetica-Bold"
+        ),
+
+        (
+            "FONTSIZE",
+            (0, 0),
+            (-1, -1),
+            8
+        ),
+
+        (
+            "VALIGN",
+            (0, 0),
+            (-1, -1),
+            "MIDDLE"
+        ),
+
+        (
+            "ALIGN",
+            (1, 0),
+            (-1, -1),
+            "RIGHT"
+        ),
+
+        (
+            "LEFTPADDING",
+            (0, 0),
+            (-1, -1),
+            5
+        ),
+
+        (
+            "RIGHTPADDING",
+            (0, 0),
+            (-1, -1),
+            5
+        ),
+
+        (
+            "TOPPADDING",
+            (0, 0),
+            (-1, -1),
+            5
+        ),
+
+        (
+            "BOTTOMPADDING",
+            (0, 0),
+            (-1, -1),
+            5
+        ),
+    ]
+
+    summary_table.setStyle(
+        TableStyle(summary_style)
+    )
+
+    story.append(summary_table)
+
+    # ========================================================
+    # FINAL SELLING PRICE
+    #
+    # Always show it clearly.
+    # ========================================================
+
+    story.append(
+        Spacer(1, 4 * mm)
+    )
+
+    final_price_table = Table(
+        [
+            [
+                "FINAL SELLING PRICE",
+                money(final_price)
+            ]
+        ],
+        colWidths=[
+            55 * mm,
+            45 * mm
+        ],
+        hAlign="RIGHT",
+    )
+
+    final_price_table.setStyle(
+        TableStyle([
+            (
+                "GRID",
+                (0, 0),
+                (-1, -1),
+                0.6,
+                colors.HexColor("#003B71")
+            ),
+
+            (
+                "BACKGROUND",
+                (0, 0),
+                (-1, -1),
+                colors.HexColor("#D9EAF7")
+            ),
+
+            (
+                "TEXTCOLOR",
+                (0, 0),
+                (-1, -1),
+                colors.HexColor("#003B71")
+            ),
+
+            (
+                "FONTNAME",
+                (0, 0),
+                (-1, -1),
+                "Helvetica-Bold"
+            ),
+
+            (
+                "FONTSIZE",
+                (0, 0),
+                (-1, -1),
+                10
+            ),
+
+            (
+                "ALIGN",
+                (1, 0),
+                (1, 0),
+                "RIGHT"
+            ),
+
+            (
+                "VALIGN",
+                (0, 0),
+                (-1, -1),
+                "MIDDLE"
+            ),
+
+            (
+                "LEFTPADDING",
+                (0, 0),
+                (-1, -1),
+                6
+            ),
+
+            (
+                "RIGHTPADDING",
+                (0, 0),
+                (-1, -1),
+                6
+            ),
+
+            (
+                "TOPPADDING",
+                (0, 0),
+                (-1, -1),
+                6
+            ),
+
+            (
+                "BOTTOMPADDING",
+                (0, 0),
+                (-1, -1),
+                6
+            ),
+        ])
+    )
+
+    story.append(
+        final_price_table
+    )
+
+    # ========================================================
+    # BUILD PDF
+    # ========================================================
+
+    doc.build(story)
+
+    output.seek(0)
+
+    return output.getvalue()
 
 # ============================================================
 
