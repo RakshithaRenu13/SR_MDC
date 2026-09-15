@@ -2488,13 +2488,12 @@ with main_right:
         # OTHER OPTIONAL ACCESSORIES
         # ====================================================
 
-        st.markdown(
-            '<div class="mdc-mini-heading">'
-            'Optional Accessories'
-            '</div>',
-            unsafe_allow_html=True
-        )
-
+        # st.markdown(
+        #     '<div class="mdc-mini-heading">'
+        #     'Optional Accessories'
+        #     '</div>',
+        #     unsafe_allow_html=True
+        # )
 
         other_accessory_keywords = [
             (
