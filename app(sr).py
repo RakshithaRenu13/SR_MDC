@@ -1736,193 +1736,189 @@ with st.container(border=True):
     # PDU TYPES FROM EXCEL
     # ----------------------------------------------------
 
-    pdu_type_display = {
-        "BASIC": "Basic PDU",
-        "METERED": "Metered PDU",
-        "SWITCHED": "Switched PDU",
-        "MANAGED": "Managed PDU",
-    }
+   pdu_type_display = {
+    "BASIC": "Basic PDU",
+    "METERED": "Metered PDU",
+    "SWITCHED": "Switched PDU",
+    "MANAGED": "Managed PDU",
+}
 
-    excel_pdu_types = []
+excel_pdu_types = []
 
-    if not pdus_df.empty:
-
-        excel_pdu_types = [
-            x
-            for x in (
-                pdus_df["Type"]
-                .astype(str)
-                .str.strip()
-                .str.upper()
-                .unique()
-                .tolist()
-            )
-            if x
-        ]
-
-    pdu_types = ["None"] + [
-        pdu_type_display.get(
-            x,
-            f"{x.title()} PDU"
+if not pdus_df.empty:
+    excel_pdu_types = [
+        x
+        for x in (
+            pdus_df["Type"]
+            .astype(str)
+            .str.strip()
+            .str.upper()
+            .unique()
+            .tolist()
         )
-        for x in excel_pdu_types
+        if x
     ]
 
+pdu_types = ["None"] + [
+    pdu_type_display.get(
+        x,
+        f"{x.title()} PDU"
+    )
+    for x in excel_pdu_types
+]
 
-    # ----------------------------------------------------
-    # PDU TYPE + PDU MODEL
-    # ----------------------------------------------------
 
-    pdu_col1, pdu_col2, pdu_col3 = st.columns(
-        [1.0, 2.0, 0.75],
-        gap="small"
+# ----------------------------------------------------
+# PDU TYPE + MODEL
+# ----------------------------------------------------
+
+pdu_col1, pdu_col2 = st.columns(
+    [1.0, 2.0],
+    gap="small"
+)
+
+
+# ----------------------------------------------------
+# PDU TYPE
+# ----------------------------------------------------
+
+with pdu_col1:
+
+    previous_pdu_type = st.session_state.get(
+        "pdu_type_selection",
+        "None"
+    )
+
+    if previous_pdu_type not in pdu_types:
+        previous_pdu_type = "None"
+
+    selected_pdu_type = st.selectbox(
+        "PDU Type",
+        pdu_types,
+        index=pdu_types.index(
+            previous_pdu_type
+        ),
+        key="pdu_type_selection",
     )
 
 
-    # ----------------------------------------------------
-    # PDU TYPE
-    # ----------------------------------------------------
+# ----------------------------------------------------
+# PDU MODEL
+# ----------------------------------------------------
 
-    with pdu_col1:
+with pdu_col2:
 
-        previous_pdu_type = st.session_state.get(
-            "pdu_type_selection",
-            "None"
+    if selected_pdu_type != "None":
+
+        reverse_type = {
+            v: k
+            for k, v in pdu_type_display.items()
+        }
+
+        excel_pdu_type = reverse_type.get(
+            selected_pdu_type,
+            selected_pdu_type
+            .replace(" PDU", "")
+            .upper(),
         )
 
-        if previous_pdu_type not in pdu_types:
-            previous_pdu_type = "None"
+        filtered_pdus = pdus_df[
+            pdus_df["Type"]
+            .astype(str)
+            .str.strip()
+            .str.upper()
+            == excel_pdu_type
+        ].copy()
 
-        selected_pdu_type = st.selectbox(
-            "PDU Type",
-            pdu_types,
-            index=pdu_types.index(
-                previous_pdu_type
-            ),
-            key="pdu_type_selection",
-        )
+        if not filtered_pdus.empty:
 
+            pdu_options = [
+                f'{clean_text(r["Part Code"])} — '
+                f'{clean_text(r["Description"])}'
+                for _, r in filtered_pdus.iterrows()
+            ]
 
-    # ----------------------------------------------------
-    # PDU MODEL
-    # ----------------------------------------------------
-
-    with pdu_col2:
-
-        if selected_pdu_type != "None":
-
-            reverse_type = {
-                v: k
-                for k, v in pdu_type_display.items()
-            }
-
-            excel_pdu_type = reverse_type.get(
-                selected_pdu_type,
-                selected_pdu_type
-                .replace(" PDU", "")
-                .upper(),
+            old_selection = st.session_state.get(
+                "pdu_model_selection"
             )
 
-            filtered_pdus = pdus_df[
-                pdus_df["Type"]
-                .astype(str)
-                .str.strip()
-                .str.upper()
-                == excel_pdu_type
-            ].copy()
+            pdu_index = (
+                pdu_options.index(old_selection)
+                if old_selection in pdu_options
+                else 0
+            )
 
+            selected_pdu = st.selectbox(
+                "Select PDU",
+                pdu_options,
+                index=pdu_index,
+                key="pdu_model_selection",
+            )
 
-            if not filtered_pdus.empty:
+            selected_row = filtered_pdus.iloc[
+                pdu_options.index(selected_pdu)
+            ]
 
-                pdu_options = [
-                    f'{clean_text(r["Part Code"])} — '
-                    f'{clean_text(r["Description"])}'
-                    for _, r in filtered_pdus.iterrows()
-                ]
-
-                old_selection = st.session_state.get(
-                    "pdu_model_selection"
-                )
-
-                pdu_index = (
-                    pdu_options.index(old_selection)
-                    if old_selection in pdu_options
-                    else 0
-                )
-
-                selected_pdu = st.selectbox(
-                    "Select PDU",
-                    pdu_options,
-                    index=pdu_index,
-                    key="pdu_model_selection",
-                )
-
-                selected_row = filtered_pdus.iloc[
-                    pdu_options.index(selected_pdu)
-                ]
-
-                selected_part = clean_text(
-                    selected_row["Part Code"]
-                )
-
-
-            else:
-
-                st.warning(
-                    f"No {selected_pdu_type} options found "
-                    "in MDC_Master_V1.xlsx."
-                )
-
-                selected_part = None
+            selected_part = clean_text(
+                selected_row["Part Code"]
+            )
 
         else:
 
             selected_part = None
 
+            st.warning(
+                f"No {selected_pdu_type} options found "
+                "in MDC_Master_V1.xlsx."
+            )
 
-    # ----------------------------------------------------
-    # PDU QUANTITY
-    # ----------------------------------------------------
+    else:
 
-    with pdu_col3:
+        selected_part = None
 
-        if selected_part:
 
-            current_pdu_qty = int(
-                numeric(
-                    st.session_state.pdu_qty.get(
-                        selected_part,
-                        1
-                    )
+# ----------------------------------------------------
+# PDU QUANTITY — COMPACT
+# ----------------------------------------------------
+
+if selected_part:
+
+    qty_col1, qty_col2 = st.columns(
+        [1.0, 3.0],
+        gap="small"
+    )
+
+    with qty_col1:
+
+        current_pdu_qty = int(
+            numeric(
+                st.session_state.pdu_qty.get(
+                    selected_part,
+                    1
                 )
             )
+        )
 
-            pdu_quantity = st.number_input(
-                "Quantity",
-                min_value=1,
-                max_value=999,
-                step=1,
-                value=current_pdu_qty,
-                key=f"pdu_quantity_{selected_part}",
-            )
+        pdu_quantity = st.number_input(
+            "PDU Qty",
+            min_value=1,
+            max_value=999,
+            step=1,
+            value=current_pdu_qty,
+            key=f"pdu_quantity_{selected_part}",
+        )
 
-            st.session_state.pdu_qty = {
-                selected_part: pdu_quantity
-            }
+    with qty_col2:
 
-        else:
+        st.empty()
 
-            st.session_state.pdu_qty = {}
+    st.session_state.pdu_qty = {
+        selected_part: pdu_quantity
+    }
 
-            st.number_input(
-                "Quantity",
-                min_value=1,
-                max_value=999,
-                value=1,
-                disabled=True,
-                key="pdu_quantity_disabled",
-            )
+else:
 
+    st.session_state.pdu_qty = {}
 # ============================================================
 # RIGHT PANEL
 # 03 OTHER ACCESSORIES
