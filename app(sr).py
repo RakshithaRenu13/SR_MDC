@@ -4,18 +4,14 @@ from io import BytesIO
 from datetime import datetime
 
 import pandas as pd
-import streamlit as st
 from reportlab.lib import colors
+from reportlab.lib.enums import TA_CENTER, TA_RIGHT
 from reportlab.lib.pagesizes import A4, landscape
-from reportlab.lib.styles import getSampleStyleSheet
+from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
 from reportlab.lib.units import mm
-from reportlab.platypus import (
-    SimpleDocTemplate,
-    Table,
-    TableStyle,
-    Paragraph,
-    Spacer,
-)
+from reportlab.platypus import SimpleDocTemplate, Table, TableStyle, Paragraph, Spacer
+
+import streamlit as st
 
 
 # ============================================================
@@ -864,7 +860,7 @@ def add_selling_prices(bom, total_cost, margin_pct, freight, installation):
 
 
 # ============================================================
-# EXCEL OUTPUT
+# EXCEL / PDF OUTPUT
 # ============================================================
 
 def customer_table():
@@ -880,133 +876,157 @@ def customer_table():
     ], columns=["Field", "Value"])
 
 
-def excel_bytes(internal=False, bom=None, cost_data=None):
+def excel_bytes(internal=False, bom=None, final_price=0.0, cost_data=None):
+    """Create ONE Excel worksheet containing customer details + BOQ + totals."""
     output = BytesIO()
 
     if bom is None:
         bom = build_bom()
 
     with pd.ExcelWriter(output, engine="openpyxl") as writer:
+        wb = writer.book
+        ws = wb.create_sheet("MDC BOQ")
+        writer.sheets["MDC BOQ"] = ws
 
-        # -----------------------------
-        # CUSTOMER / CONFIGURATION INFO
-        # -----------------------------
-        customer_info = customer_table()
+        # ---------------- CUSTOMER / CONFIGURATION ----------------
+        info = customer_table()
+        ws.cell(row=1, column=1, value="EATON MDC SOLUTION CONFIGURATOR")
+        ws.cell(row=2, column=1, value="Customer & Configuration Details")
 
-        start_row = 0
+        row_no = 4
+        for _, r in info.iterrows():
+            ws.cell(row=row_no, column=1, value=r["Field"])
+            ws.cell(row=row_no, column=2, value=r["Value"])
+            row_no += 1
 
-        customer_info.to_excel(
-            writer,
-            index=False,
-            sheet_name="MDC BOQ",
-            startrow=start_row
-        )
+        row_no += 1
+        ws.cell(row=row_no, column=1, value="FINAL BOQ")
+        row_no += 1
 
-        start_row += len(customer_info) + 3
-
-        # -----------------------------
-        # FINAL BOQ
-        # -----------------------------
         if internal:
-            boq_cols = [
-                "S.No.",
-                "Component Type",
-                "Part Code",
-                "Description",
-                "Quantity",
-                "UOM",
-                "Unit Cost",
-                "Total Cost",
-                "Unit Price",
-                "Total Price",
+            headers = [
+                "S.No.", "Component Type", "Part Code", "Description",
+                "Quantity", "UOM", "Unit Cost", "Total Cost",
+                "Unit Price", "Total Price"
             ]
         else:
-            boq_cols = [
-                "S.No.",
-                "Component Type",
-                "Part Code",
-                "Description",
-                "Quantity",
-                "UOM",
-                "Unit Price",
-                "Total Price",
+            headers = [
+                "S.No.", "Component Type", "Part Code", "Description",
+                "Quantity", "UOM", "Unit Price", "Total Price"
             ]
 
-        bom[boq_cols].to_excel(
-            writer,
-            index=False,
-            sheet_name="MDC BOQ",
-            startrow=start_row
-        )
+        for col_no, header in enumerate(headers, 1):
+            ws.cell(row=row_no, column=col_no, value=header)
 
-        start_row += len(bom) + 3
+        header_row = row_no
+        row_no += 1
 
-        # -----------------------------
-        # PRICE SUMMARY
-        # -----------------------------
+        for _, r in bom.iterrows():
+            values = []
+            if internal:
+                values = [
+                    r.get("S.No."), r.get("Component Type"), r.get("Part Code"),
+                    r.get("Description"), r.get("Quantity"), r.get("UOM"),
+                    r.get("Unit Cost"), r.get("Total Cost"),
+                    r.get("Unit Price"), r.get("Total Price")
+                ]
+            else:
+                values = [
+                    r.get("S.No."), r.get("Component Type"), r.get("Part Code"),
+                    r.get("Description"), r.get("Quantity"), r.get("UOM"),
+                    r.get("Unit Price"), r.get("Total Price")
+                ]
+
+            for col_no, value in enumerate(values, 1):
+                if pd.isna(value):
+                    value = None
+                ws.cell(row=row_no, column=col_no, value=value)
+            row_no += 1
+
+        # ---------------- PRICE SUMMARY ON SAME SHEET ----------------
+        row_no += 1
+        ws.cell(row=row_no, column=1, value="PRICE SUMMARY")
+        row_no += 1
+
         if internal:
-
-            summary = pd.DataFrame([
-                ["Base Cost", base_cost],
-                ["Optional Cost", optional_cost],
-                ["PDU Cost", pdu_cost],
-                ["Total Cost", total_cost],
-                ["Margin (%)", margin_pct],
-                ["Margin Price", margin_price],
-                ["Freight", freight],
-                ["Installation", installation],
-                ["Warranty (%)", warranty_pct],
-                ["Warranty Amount",
-                 margin_price * warranty_pct / 100],
-                ["Final Selling Price", final_selling_price],
-            ], columns=["Item", "Value"])
-
+            summary = [
+                ("Base Cost", base_cost),
+                ("Optional Cost", optional_cost),
+                ("PDU Cost", pdu_cost),
+                ("Total Cost", total_cost),
+                ("Margin %", margin_pct),
+                ("Margin Price", margin_price),
+                ("Freight", freight),
+                ("Installation", installation),
+                ("Warranty %", warranty_pct),
+                ("Warranty Amount", margin_price * warranty_pct / 100),
+                ("Final Selling Price", final_price),
+            ]
         else:
+            summary = [
+                ("Final Selling Price", final_price),
+            ]
 
-            summary = pd.DataFrame([
-                ["Final Selling Price", final_selling_price],
-            ], columns=["Item", "Value"])
+        for label, value in summary:
+            ws.cell(row=row_no, column=1, value=label)
+            ws.cell(row=row_no, column=2, value=float(value))
+            row_no += 1
 
-        summary.to_excel(
-            writer,
-            index=False,
-            sheet_name="MDC BOQ",
-            startrow=start_row
-        )
+        # ---------------- EXCEL FORMATTING ----------------
+        title_fill = "003B71"
+        section_fill = "005EB8"
+        header_fill = "D9EAF7"
 
-        # -----------------------------
-        # FORMAT SINGLE SHEET
-        # -----------------------------
-        ws = writer.book["MDC BOQ"]
+        ws.merge_cells(start_row=1, start_column=1, end_row=1, end_column=len(headers))
+        ws.merge_cells(start_row=2, start_column=1, end_row=2, end_column=len(headers))
 
-        ws.freeze_panes = "A2"
+        for cell in ws[1]:
+            cell.fill = __import__("openpyxl").styles.PatternFill("solid", fgColor=title_fill)
+            cell.font = __import__("openpyxl").styles.Font(color="FFFFFF", bold=True, size=16)
 
-        for column in ws.columns:
-            max_length = 0
-            column_letter = column[0].column_letter
+        for cell in ws[2]:
+            cell.fill = __import__("openpyxl").styles.PatternFill("solid", fgColor=section_fill)
+            cell.font = __import__("openpyxl").styles.Font(color="FFFFFF", bold=True, size=11)
 
-            for cell in column:
-                try:
-                    max_length = max(
-                        max_length,
-                        len(str(cell.value))
-                    )
-                except Exception:
-                    pass
+        for c in range(1, len(headers) + 1):
+            cell = ws.cell(header_row, c)
+            cell.fill = __import__("openpyxl").styles.PatternFill("solid", fgColor=header_fill)
+            cell.font = __import__("openpyxl").styles.Font(bold=True)
+            cell.alignment = __import__("openpyxl").styles.Alignment(horizontal="center", vertical="center")
 
-            ws.column_dimensions[column_letter].width = min(
-                max_length + 2,
-                50
-            )
+        # Currency formats
+        for row in ws.iter_rows():
+            for cell in row:
+                if isinstance(cell.value, (int, float)) and cell.column in range(7, len(headers) + 1):
+                    cell.number_format = '₹ #,##0.00'
+
+        # Summary values are currency except percentage fields.
+        summary_start = header_row + len(bom) + 3
+        for rr in range(summary_start, row_no):
+            label = ws.cell(rr, 1).value
+            if label in ("Margin %", "Warranty %"):
+                ws.cell(rr, 2).number_format = '0.00'
+            else:
+                ws.cell(rr, 2).number_format = '₹ #,##0.00'
+
+        widths = {
+            1: 10, 2: 23, 3: 22, 4: 65, 5: 12,
+            6: 10, 7: 17, 8: 17, 9: 17, 10: 17
+        }
+        for col, width in widths.items():
+            if col <= len(headers):
+                ws.column_dimensions[__import__("openpyxl").utils.get_column_letter(col)].width = width
+
+        ws.freeze_panes = f"A{header_row + 1}"
+        ws.auto_filter.ref = f"A{header_row}:{__import__('openpyxl').utils.get_column_letter(len(headers))}{header_row + len(bom)}"
 
     output.seek(0)
-    return output
-def pdf_bytes(internal=False, bom=None):
+    return output.getvalue()
+
+
+def pdf_bytes(internal=False, bom=None, final_price=0.0):
+    """Create a single-page/flowing PDF report for Sales or Internal use."""
     output = BytesIO()
-
-    if bom is None:
-        bom = build_bom()
-
     doc = SimpleDocTemplate(
         output,
         pagesize=landscape(A4),
@@ -1014,205 +1034,138 @@ def pdf_bytes(internal=False, bom=None):
         leftMargin=10 * mm,
         topMargin=10 * mm,
         bottomMargin=10 * mm,
+        title="Eaton MDC Solution Configurator",
     )
 
     styles = getSampleStyleSheet()
-    story = []
-
-    # -----------------------------
-    # TITLE
-    # -----------------------------
-    story.append(
-        Paragraph(
-            "Eaton MDC Solution Configurator",
-            styles["Title"]
-        )
+    title_style = ParagraphStyle(
+        "MdcTitle", parent=styles["Title"], fontSize=17,
+        leading=20, alignment=TA_CENTER, spaceAfter=4
+    )
+    sub_style = ParagraphStyle(
+        "MdcSub", parent=styles["Normal"], fontSize=9,
+        alignment=TA_CENTER, spaceAfter=8
+    )
+    small = ParagraphStyle(
+        "MdcSmall", parent=styles["Normal"], fontSize=7,
+        leading=8
+    )
+    right_small = ParagraphStyle(
+        "MdcRight", parent=small, alignment=TA_RIGHT
     )
 
-    story.append(
-        Paragraph(
-            "Modular Data Center Solution Configuration & Pricing",
-            styles["Normal"]
-        )
-    )
-
-    story.append(Spacer(1, 8))
-
-    # -----------------------------
-    # CUSTOMER DETAILS
-    # -----------------------------
-    details = [
-        ["Customer Name", st.session_state.customer_name],
-        ["Customer Place", st.session_state.customer_place],
-        ["MDC Type", st.session_state.mdc_type],
-        ["Configuration", st.session_state.configuration],
-        ["User Code", st.session_state.user_code],
-        ["Date", datetime.now().strftime("%d-%m-%Y")],
+    story = [
+        Paragraph("EATON MDC SOLUTION CONFIGURATOR", title_style),
+        Paragraph("Modular Data Center Solution Configuration & Pricing", sub_style),
     ]
 
-    detail_table = Table(
-        details,
-        colWidths=[45 * mm, 75 * mm]
-    )
-
-    detail_table.setStyle(
-        TableStyle([
-            ("GRID", (0, 0), (-1, -1), 0.5, colors.grey),
-            ("BACKGROUND", (0, 0), (0, -1), colors.lightgrey),
-            ("FONTNAME", (0, 0), (-1, -1), "Helvetica"),
-            ("FONTSIZE", (0, 0), (-1, -1), 8),
-            ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
+    info = customer_table()
+    info_data = []
+    for _, r in info.iterrows():
+        info_data.append([
+            Paragraph(f"<b>{clean_text(r['Field'])}</b>", small),
+            Paragraph(clean_text(r["Value"]), small),
         ])
-    )
 
-    story.append(detail_table)
-    story.append(Spacer(1, 10))
+    info_table = Table(info_data, colWidths=[42 * mm, 90 * mm])
+    info_table.setStyle(TableStyle([
+        ("GRID", (0, 0), (-1, -1), 0.35, colors.grey),
+        ("BACKGROUND", (0, 0), (0, -1), colors.HexColor("D9EAF7")),
+        ("VALIGN", (0, 0), (-1, -1), "TOP"),
+        ("LEFTPADDING", (0, 0), (-1, -1), 5),
+        ("RIGHTPADDING", (0, 0), (-1, -1), 5),
+        ("TOPPADDING", (0, 0), (-1, -1), 3),
+        ("BOTTOMPADDING", (0, 0), (-1, -1), 3),
+    ]))
+    story += [info_table, Spacer(1, 6 * mm)]
 
-    # -----------------------------
-    # BOQ
-    # -----------------------------
     if internal:
-
-        data = [[
-            "S.No.",
-            "Part Code",
-            "Description",
-            "Qty",
-            "UOM",
-            "Unit Cost",
-            "Total Cost",
-            "Unit Price",
-            "Total Price",
-        ]]
-
-        for _, row in bom.iterrows():
-            data.append([
-                row["S.No."],
-                row["Part Code"],
-                Paragraph(
-                    str(row["Description"]),
-                    styles["Normal"]
-                ),
-                row["Quantity"],
-                row["UOM"],
-                money(row["Unit Cost"]),
-                money(row["Total Cost"]),
-                money(row["Unit Price"]),
-                money(row["Total Price"]),
-            ])
-
+        headers = [
+            "S.No.", "Type", "Part Code", "Description", "Qty", "UOM",
+            "Unit Cost", "Total Cost", "Unit Price", "Total Price"
+        ]
     else:
+        headers = [
+            "S.No.", "Type", "Part Code", "Description", "Qty", "UOM",
+            "Unit Price", "Total Price"
+        ]
 
-        data = [[
-            "S.No.",
-            "Part Code",
-            "Description",
-            "Qty",
-            "UOM",
-            "Unit Price",
-            "Total Price",
-        ]]
+    table_data = [headers]
+    for _, r in bom.iterrows():
+        desc = Paragraph(clean_text(r.get("Description")), small)
+        if internal:
+            vals = [
+                clean_text(r.get("S.No.")), clean_text(r.get("Component Type")),
+                clean_text(r.get("Part Code")), desc,
+                clean_text(r.get("Quantity")), clean_text(r.get("UOM")),
+                money(r.get("Unit Cost")), money(r.get("Total Cost")),
+                money(r.get("Unit Price")), money(r.get("Total Price")),
+            ]
+        else:
+            vals = [
+                clean_text(r.get("S.No.")), clean_text(r.get("Component Type")),
+                clean_text(r.get("Part Code")), desc,
+                clean_text(r.get("Quantity")), clean_text(r.get("UOM")),
+                money(r.get("Unit Price")), money(r.get("Total Price")),
+            ]
+        table_data.append(vals)
 
-        for _, row in bom.iterrows():
-            data.append([
-                row["S.No."],
-                row["Part Code"],
-                Paragraph(
-                    str(row["Description"]),
-                    styles["Normal"]
-                ),
-                row["Quantity"],
-                row["UOM"],
-                money(row["Unit Price"]),
-                money(row["Total Price"]),
-            ])
+    if internal:
+        widths = [12*mm, 28*mm, 27*mm, 85*mm, 12*mm, 12*mm, 25*mm, 27*mm, 25*mm, 27*mm]
+    else:
+        widths = [13*mm, 30*mm, 30*mm, 105*mm, 13*mm, 13*mm, 28*mm, 30*mm]
 
-    boq_table = Table(
-        data,
-        repeatRows=1,
-        colWidths=(
-            [12*mm, 30*mm, 100*mm, 15*mm, 15*mm,
-             30*mm, 30*mm, 30*mm, 30*mm]
-            if internal
-            else
-            [12*mm, 30*mm, 115*mm, 15*mm, 15*mm,
-             35*mm, 35*mm]
+    boq_table = Table(table_data, colWidths=widths, repeatRows=1)
+    boq_table.setStyle(TableStyle([
+        ("BACKGROUND", (0, 0), (-1, 0), colors.HexColor("003B71")),
+        ("TEXTCOLOR", (0, 0), (-1, 0), colors.white),
+        ("FONTNAME", (0, 0), (-1, 0), "Helvetica-Bold"),
+        ("FONTSIZE", (0, 0), (-1, -1), 7),
+        ("GRID", (0, 0), (-1, -1), 0.3, colors.grey),
+        ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
+        ("ALIGN", (0, 0), (2, -1), "LEFT"),
+        ("ALIGN", (4, 1), (-1, -1), "RIGHT"),
+        ("LEFTPADDING", (0, 0), (-1, -1), 3),
+        ("RIGHTPADDING", (0, 0), (-1, -1), 3),
+        ("TOPPADDING", (0, 0), (-1, -1), 3),
+        ("BOTTOMPADDING", (0, 0), (-1, -1), 3),
+    ]))
+    story += [Paragraph("FINAL BOQ", styles["Heading3"]), boq_table, Spacer(1, 5 * mm)]
+
+    if internal:
+        summary = [
+            ["Base Cost", money(base_cost), "Optional Cost", money(optional_cost)],
+            ["PDU Cost", money(pdu_cost), "Total Cost", money(total_cost)],
+            ["Margin %", f"{margin_pct:.2f}%", "Margin Price", money(margin_price)],
+            ["Freight", money(freight), "Installation", money(installation)],
+            ["Warranty %", f"{warranty_pct:.2f}%", "Warranty Amount", money(margin_price * warranty_pct / 100)],
+            ["FINAL SELLING PRICE", money(final_price), "", ""],
+        ]
+        summary_table = Table(summary, colWidths=[38*mm, 42*mm, 45*mm, 45*mm])
+    else:
+        summary_table = Table(
+            [["FINAL SELLING PRICE", money(final_price)]],
+            colWidths=[55*mm, 45*mm]
         )
-    )
 
-    boq_table.setStyle(
-        TableStyle([
-            ("BACKGROUND", (0, 0), (-1, 0), colors.HexColor("#003B71")),
-            ("TEXTCOLOR", (0, 0), (-1, 0), colors.white),
-            ("GRID", (0, 0), (-1, -1), 0.4, colors.grey),
-            ("FONTNAME", (0, 0), (-1, 0), "Helvetica-Bold"),
-            ("FONTSIZE", (0, 0), (-1, -1), 7),
-            ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
-            ("ALIGN", (0, 0), (-1, -1), "LEFT"),
-        ])
-    )
-
-    story.append(
-        Paragraph("FINAL BOQ", styles["Heading2"])
-    )
-
-    story.append(boq_table)
-    story.append(Spacer(1, 10))
-
-    # -----------------------------
-    # PRICE SUMMARY
-    # -----------------------------
-    if internal:
-
-        summary = [
-            ["Base Cost", money(base_cost)],
-            ["Optional Cost", money(optional_cost)],
-            ["PDU Cost", money(pdu_cost)],
-            ["Total Cost", money(total_cost)],
-            ["Margin", f"{margin_pct:.2f}%"],
-            ["Margin Price", money(margin_price)],
-            ["Freight", money(freight)],
-            ["Installation", money(installation)],
-            ["Warranty", f"{warranty_pct:.2f}%"],
-            ["Warranty Amount",
-             money(margin_price * warranty_pct / 100)],
-            ["Final Selling Price", money(final_selling_price)],
-        ]
-
-    else:
-
-        summary = [
-            ["Final Selling Price", money(final_selling_price)]
-        ]
-
-    summary_table = Table(
-        summary,
-        colWidths=[60 * mm, 50 * mm]
-    )
-
-    summary_table.setStyle(
-        TableStyle([
-            ("GRID", (0, 0), (-1, -1), 0.5, colors.grey),
-            ("BACKGROUND", (0, 0), (0, -1), colors.lightgrey),
-            ("FONTNAME", (0, 0), (-1, -1), "Helvetica"),
-            ("FONTNAME", (0, -1), (-1, -1), "Helvetica-Bold"),
-            ("FONTSIZE", (0, 0), (-1, -1), 8),
-        ])
-    )
-
-    story.append(
-        Paragraph("PRICE SUMMARY", styles["Heading2"])
-    )
-
-    story.append(summary_table)
+    summary_table.setStyle(TableStyle([
+        ("GRID", (0, 0), (-1, -1), 0.4, colors.grey),
+        ("BACKGROUND", (0, 0), (-1, -1), colors.HexColor("F4F8FC")),
+        ("FONTNAME", (0, 0), (-1, -1), "Helvetica-Bold"),
+        ("FONTSIZE", (0, 0), (-1, -1), 8),
+        ("ALIGN", (1, 0), (-1, -1), "RIGHT"),
+        ("SPAN", (0, -1), (2, -1)) if internal else ("SPAN", (0, 0), (0, 0)),
+        ("TEXTCOLOR", (0, -1), (-1, -1), colors.HexColor("003B71")),
+    ]))
+    story += [summary_table]
 
     doc.build(story)
-
     output.seek(0)
-    return output
+    return output.getvalue()
 
 
 # ============================================================
+
 # CONSTANTS USED BY UI
 # ============================================================
 
@@ -2068,18 +2021,13 @@ if is_internal:
         price_box("Warranty Amount", warranty_amount)
 
 
-
 # ============================================================
-# 8. EXCEL / PDF DOWNLOAD
+# 8. DOWNLOADS — EXCEL + PDF
 # ============================================================
 
-st.header("8. Excel / PDF Download")
+st.header("8. Downloads")
 
 if not bom.empty:
-
-    # --------------------------------------------------------
-    # INTERNAL COST SUMMARY
-    # --------------------------------------------------------
     internal_cost_data = [
         ["Base Cost", base_cost],
         ["Optional Cost", optional_cost],
@@ -2094,145 +2042,82 @@ if not bom.empty:
         ["Warranty Amount", margin_price * warranty_pct / 100],
     ]
 
-    # --------------------------------------------------------
-    # SALES EXCEL
-    # --------------------------------------------------------
-    sales_excel_data = excel_bytes(
+    sales_excel = excel_bytes(
         internal=False,
         bom=bom_with_price,
-        cost_data=None,
+        final_price=final_selling_price,
     )
-
-    # --------------------------------------------------------
-    # SALES PDF
-    # --------------------------------------------------------
-    sales_pdf_data = pdf_bytes(
+    sales_pdf = pdf_bytes(
         internal=False,
         bom=bom_with_price,
+        final_price=final_selling_price,
     )
 
-    # ========================================================
-    # INTERNAL MODE
-    # ========================================================
     if is_internal:
+        internal_excel = excel_bytes(
+            internal=True,
+            bom=bom_with_price,
+            final_price=final_selling_price,
+            cost_data=internal_cost_data,
+        )
+        internal_pdf = pdf_bytes(
+            internal=True,
+            bom=bom_with_price,
+            final_price=final_selling_price,
+        )
 
-        col1, col2 = st.columns(2)
+        st.subheader("Internal – MDC")
+        i1, i2 = st.columns(2)
 
-        # ----------------------------------------------------
-        # INTERNAL EXCEL
-        # ----------------------------------------------------
-        with col1:
+        with i1:
             st.download_button(
-                "⬇️ Download Internal Cost Excel",
-                data=excel_bytes(
-                    internal=True,
-                    bom=bom_with_price,
-                    cost_data=internal_cost_data,
-                ),
+                "⬇️ Download Internal Excel",
+                data=internal_excel,
                 file_name="MDC_Internal_Cost.xlsx",
-                mime=(
-                    "application/vnd.openxmlformats-officedocument."
-                    "spreadsheetml.sheet"
-                ),
+                mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
                 use_container_width=True,
                 on_click=handle_excel_download,
             )
 
-        # ----------------------------------------------------
-        # INTERNAL PDF
-        # ----------------------------------------------------
-        with col2:
+        with i2:
             st.download_button(
-                "📄 Download Internal Cost PDF",
-                data=pdf_bytes(
-                    internal=True,
-                    bom=bom_with_price,
-                    cost_data=internal_cost_data,
-                ),
+                "📄 Download Internal PDF",
+                data=internal_pdf,
                 file_name="MDC_Internal_Cost.pdf",
                 mime="application/pdf",
                 use_container_width=True,
                 on_click=handle_excel_download,
             )
 
-        # ----------------------------------------------------
-        # SALES OUTPUTS
-        # ----------------------------------------------------
-        col3, col4 = st.columns(2)
+        st.subheader("Sales")
 
-        # Sales Excel
-        with col3:
-            st.download_button(
-                "⬇️ Download Sales Excel",
-                data=sales_excel_data,
-                file_name="MDC_Sales_Output.xlsx",
-                mime=(
-                    "application/vnd.openxmlformats-officedocument."
-                    "spreadsheetml.sheet"
-                ),
-                use_container_width=True,
-                on_click=handle_excel_download,
-            )
+    s1, s2 = st.columns(2)
 
-        # Sales PDF
-        with col4:
-            st.download_button(
-                "📄 Download Sales PDF",
-                data=sales_pdf_data,
-                file_name="MDC_Sales_Output.pdf",
-                mime="application/pdf",
-                use_container_width=True,
-                on_click=handle_excel_download,
-            )
+    with s1:
+        st.download_button(
+            "⬇️ Download Sales Excel",
+            data=sales_excel,
+            file_name="MDC_Sales_Output.xlsx",
+            mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+            use_container_width=True,
+            on_click=handle_excel_download,
+        )
 
-    # ========================================================
-    # SALES MODE
-    # ========================================================
-    else:
-
-        col1, col2 = st.columns(2)
-
-        # ----------------------------------------------------
-        # SALES EXCEL
-        # ----------------------------------------------------
-        with col1:
-            st.download_button(
-                "⬇️ Download Sales Excel",
-                data=sales_excel_data,
-                file_name="MDC_Sales_Output.xlsx",
-                mime=(
-                    "application/vnd.openxmlformats-officedocument."
-                    "spreadsheetml.sheet"
-                ),
-                use_container_width=True,
-                on_click=handle_excel_download,
-            )
-
-        # ----------------------------------------------------
-        # SALES PDF
-        # ----------------------------------------------------
-        with col2:
-            st.download_button(
-                "📄 Download Sales PDF",
-                data=sales_pdf_data,
-                file_name="MDC_Sales_Output.pdf",
-                mime="application/pdf",
-                use_container_width=True,
-                on_click=handle_excel_download,
-            )
-
+    with s2:
+        st.download_button(
+            "📄 Download Sales PDF",
+            data=sales_pdf,
+            file_name="MDC_Sales_Output.pdf",
+            mime="application/pdf",
+            use_container_width=True,
+            on_click=handle_excel_download,
+        )
 else:
-
-    st.info(
-        "Select a configuration with available BOM data before downloading."
-    )
-
-
-
-
+    st.info("Select a configuration with available BOM data before downloading.")
 
 
 # ============================================================
+
 # 9. SAVE CONFIGURATION
 # ============================================================
 
