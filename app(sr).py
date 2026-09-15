@@ -358,39 +358,69 @@ def load_master():
 
     for config_name, info in block_info.items():
         block = sheet.iloc[info["start"]:info["end"]]
+        first_row = block.iloc[0]
 
-        # Read the actual solution title from Excel.
-        solution_title = get(block.iloc[0], 0)
-        if not solution_title:
-            solution_title = config_name
-
-        # Remove Excel line breaks for cleaner UI text.
-        solution_title = " ".join(solution_title.split())
-        solution_title = solution_title.replace("SOLUTION 1", "").replace("SOLUTION 2", "")
-        solution_title = solution_title.replace("SOLUTION 3", "").replace("SOLUTION 4", "")
-        solution_title = " ".join(solution_title.split()).strip(" -")
-
-        for local_index, (_, row) in enumerate(block.iterrows()):
-            # First row = solution title
-            # Second row = column headings
-            if local_index in (0, 1):
+        excel_solution_title = clean_text(
+            first_row.iloc[info["desc_col"]]
+        )
+        # Remove line breaks and extra spaces for clean display.
+        excel_solution_title = " ".join(
+            excel_solution_title.split()
+        )
+        info["title"] = excel_solution_title
+        for excel_row, (_, row) in enumerate(
+            block.iterrows(),
+            start=info["start"] + 1
+        ):
+            part = clean_text(row.iloc[info["part_col"]])
+            desc = clean_text(row.iloc[info["desc_col"]])
+            qty = numeric(row.iloc[info["qty_col"]])
+            uom = clean_text(row.iloc[info["uom_col"]])
+            price = numeric(row.iloc[info["price_col"]])
+            
+            if excel_row == info["start"] + 1:
                 continue
-
-            part = get(row, info["part"])
-            desc = get(row, info["desc"])
-            qty = numeric(row.iloc[info["qty"]])
-            uom = get(row, info["uom"])
-            price = numeric(row.iloc[info["price"]])
-
-            if not part and not desc:
+            if not desc and not part:
                 continue
-
-            if part.upper() in {"PART NUMBER", "PART NO", "PART CODE"}:
+            if part.upper() == "PART NUMBER":
                 continue
-
-            # CTO is the configuration heading, not a priced BOQ line.
-            if part.upper() == "CTO3M002":
+            if part == "CTO3M002":
                 continue
+        
+
+
+        # # Read the actual solution title from Excel.
+        # solution_title = get(block.iloc[0], 0)
+        # if not solution_title:
+        #     solution_title = config_name
+
+        # # Remove Excel line breaks for cleaner UI text.
+        # solution_title = " ".join(solution_title.split())
+        # solution_title = solution_title.replace("SOLUTION 1", "").replace("SOLUTION 2", "")
+        # solution_title = solution_title.replace("SOLUTION 3", "").replace("SOLUTION 4", "")
+        # solution_title = " ".join(solution_title.split()).strip(" -")
+
+        # for local_index, (_, row) in enumerate(block.iterrows()):
+        #     # First row = solution title
+        #     # Second row = column headings
+        #     if local_index in (0, 1):
+        #         continue
+
+        #     part = get(row, info["part"])
+        #     desc = get(row, info["desc"])
+        #     qty = numeric(row.iloc[info["qty"]])
+        #     uom = get(row, info["uom"])
+        #     price = numeric(row.iloc[info["price"]])
+
+        #     if not part and not desc:
+        #         continue
+
+        #     if part.upper() in {"PART NUMBER", "PART NO", "PART CODE"}:
+        #         continue
+
+        #     # CTO is the configuration heading, not a priced BOQ line.
+        #     if part.upper() == "CTO3M002":
+        #         continue
 
             component_rows.append({
                 "MDC Type": "Single Rack",
@@ -1747,6 +1777,7 @@ if not bom.empty:
         )
 
     new_serial = []
+    main_mdc_found = False
     mdc_sub_no = 0
     cooling_started = False
     cooling_sub_no = 0
@@ -1754,9 +1785,18 @@ if not bom.empty:
 
     for idx, row in structure.iterrows():
         part_code = clean_text(row["Part Code"])
+        description = clean_text(row["Description"])
         component_type = clean_text(
             bom.loc[row.name, "Component Type"]
         )
+
+        if (
+            not main_mdc_found
+            and "SINGLE RACK MDC" in description.upper()
+        ):
+            new_serial.append("")
+            main_mdc_found = True
+            continue
 
         if part_code == "801029209":
             new_serial.append("1")
@@ -1827,6 +1867,14 @@ if not bom.empty:
         text-align:center !important;
         padding:15px 10px;
     }
+    .configuration-title-row td {
+        background:#005EB8;
+        color:white !important;
+        font-weight:700;
+        font-size:16px;
+        text-align:left !important;
+        padding:14px 12px;
+    }
 
     .section-heading td {
         background:#005EB8;
@@ -1888,34 +1936,34 @@ if not bom.empty:
         </thead>
         <tbody>
     """
+    selected_config_title = ""
+
+    if not selected_config_components.empty:
+        selected_config_title = clean_text(
+            selected_config_components["Configuration Title"].iloc[0]
+        )
+    if not selected_config_title:
+        selected_config_row = configs_df[
+            configs_df["Configuration"]
+            == st.session_state.configuration
+        ]
+         if not selected_config_row.empty:
+            selected_config_title = clean_text(
+                selected_config_row.iloc[0]["Configuration Title"]
+            )
+      if selected_config_title:
+        html += f"""
+        <tr class="configuration-title-row">
+            <td colspan="7">
+                {selected_config_title}
+            </td>
+        </tr>
+        """
+
 
     cooling_heading_added = False
     accessories_heading_added = False
     pdu_heading_added = False
-
-    # The first row inside FINAL BOQ is the configuration title read
-    # directly from the Excel master. It is displayed by itself in
-    # Eaton dark blue and does not contain S.No., Part Code, Qty, etc.
-    config_record = selected_config_record()
-    if config_record is not None:
-        final_boq_title = clean_text(config_record.get("Configuration Title"))
-    else:
-        final_boq_title = clean_text(st.session_state.configuration)
-
-    # Escape HTML-sensitive characters because the title comes from Excel.
-    final_boq_title = (
-        final_boq_title
-        .replace("&", "&amp;")
-        .replace("<", "&lt;")
-        .replace(">", "&gt;")
-        .replace('"', "&quot;")
-    )
-
-    html += f"""
-        <tr class="main-mdc-row">
-            <td colspan="7">{final_boq_title}</td>
-        </tr>
-    """
 
     for _, row in structure.iterrows():
         part_code = clean_text(row["Part Code"])
@@ -1938,6 +1986,17 @@ if not bom.empty:
         total_price_display = (
             money(total_price) if pd.notna(total_price) else "N/A"
         )
+
+        if (
+            serial_no == ""
+            and "SINGLE RACK MDC" in description.upper()
+        ):
+            html += f"""
+            <tr class="main-mdc-row">
+                <td colspan="7">{description}</td>
+            </tr>
+            """
+            continue
 
         if (
             part_code in cooling_part_codes
