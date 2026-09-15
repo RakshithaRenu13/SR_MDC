@@ -1951,7 +1951,7 @@ if not bom.empty:
             selected_config_title = clean_text(
                 selected_config_row.iloc[0]["Configuration Title"]
             )
-      if selected_config_title:
+    if selected_config_title:
         html += f"""
         <tr class="configuration-title-row">
             <td colspan="7">
