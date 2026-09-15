@@ -3415,110 +3415,114 @@ with main_right:
                         part
                     ] = quantity
 
+# ====================================================
+# FIRE SUPPRESSION
+# ====================================================
 
-        # ====================================================
-        # FIRE SUPPRESSION
-        # ====================================================
+fire_rows = excel_optional_rows("FIRE")
 
-        # st.markdown(
-        #     '<div class="mdc-mini-heading">'
-        #     'Fire Suppression'
-        #     '</div>',
-        #     unsafe_allow_html=True
-        # )
+# ----------------------------------------------------
+# EXTERNAL FIRE SUPPRESSION
+# ----------------------------------------------------
+external_fire = fire_rows[
+    fire_rows["Description"]
+    .astype(str)
+    .str.upper()
+    .str.contains("EXTERNAL", na=False)
+].copy()
 
-        fire_rows = excel_optional_rows("FIRE")
+# ----------------------------------------------------
+# INTERNAL / RACK-MOUNT FIRE SUPPRESSION
+# ----------------------------------------------------
+# Everything returned by "FIRE" that is NOT external
+# is treated as the internal/rack-mount option.
+internal_fire = fire_rows[
+    ~fire_rows["Description"]
+    .astype(str)
+    .str.upper()
+    .str.contains("EXTERNAL", na=False)
+].copy()
 
-        external_fire = fire_rows[
-            fire_rows["Description"]
-            .astype(str)
-            .str.upper()
-            .str.contains(
-                "EXTERNAL",
-                na=False
+
+# ----------------------------------------------------
+# DETERMINE CURRENT SELECTION
+# ----------------------------------------------------
+fire_current = "None"
+
+external_selected = (
+    not external_fire.empty
+    and any(
+        numeric(
+            st.session_state.accessory_qty.get(
+                clean_text(p),
+                0
             )
-        ].copy()
+        ) > 0
+        for p in external_fire["Part Code"]
+    )
+)
 
-        internal_fire = fire_rows[
-            fire_rows["Description"]
-            .astype(str)
-            .str.upper()
-            .str.contains(
-                "INTERNAL|IN-RACK",
-                na=False
+internal_selected = (
+    not internal_fire.empty
+    and any(
+        numeric(
+            st.session_state.accessory_qty.get(
+                clean_text(p),
+                0
             )
-        ].copy()
+        ) > 0
+        for p in internal_fire["Part Code"]
+    )
+)
+
+if external_selected:
+    fire_current = "External"
+elif internal_selected:
+    fire_current = "Internal"
 
 
-        fire_current = "None"
+# ----------------------------------------------------
+# FIRE SUPPRESSION SELECTION
+# ----------------------------------------------------
+fire_selection = st.radio(
+    "Fire Suppression",
+    ["None", "External", "Internal"],
 
-        if not external_fire.empty:
+    index=[
+        "None",
+        "External",
+        "Internal"
+    ].index(fire_current),
 
-            if any(
-                numeric(
-                    st.session_state.accessory_qty.get(
-                        p,
-                        0
-                    )
-                ) > 0
-                for p in external_fire[
-                    "Part Code"
-                ].astype(str).str.strip()
-            ):
-                fire_current = "External"
+    horizontal=True,
 
-
-        elif not internal_fire.empty:
-
-            if any(
-                numeric(
-                    st.session_state.accessory_qty.get(
-                        p,
-                        0
-                    )
-                ) > 0
-                for p in internal_fire[
-                    "Part Code"
-                ].astype(str).str.strip()
-            ):
-                fire_current = "Internal"
+    key="fire_suppression_selection",
+)
 
 
-        fire_selection = st.radio(
-            "Fire Suppression",
-            ["None", "External", "Internal"],
-
-            index=[
-                "None",
-                "External",
-                "Internal"
-            ].index(fire_current),
-
-            horizontal=True,
-
-            key="fire_suppression_selection",
-        )
+# ----------------------------------------------------
+# REMOVE PREVIOUS FIRE SELECTION
+# ----------------------------------------------------
+remove_rows(external_fire)
+remove_rows(internal_fire)
 
 
-        remove_rows(external_fire)
-        remove_rows(internal_fire)
+# ----------------------------------------------------
+# ADD NEW FIRE SELECTION
+# ----------------------------------------------------
+if fire_selection == "External":
 
+    add_rows(
+        external_fire,
+        1
+    )
 
-        if fire_selection == "External":
+elif fire_selection == "Internal":
 
-            add_rows(
-                external_fire,
-                1
-            )
-
-        elif fire_selection == "Internal":
-
-            add_rows(
-                internal_fire,
-                1
-            )
-
-
+    add_rows(
+        internal_fire,
+        1
+    )
         # ====================================================
         # CAMERA
         # ====================================================
