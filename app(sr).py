@@ -1172,7 +1172,7 @@ def pdf_bytes(internal=False, bom=None, final_price=0.0):
         desc = Paragraph(clean_text(r.get("Description")), small)
         if internal:
             vals = [
-                clean_text(r.get("S.No.")), clean_text(r.get("Component Type")),
+                clean_text(r.get("S.No.")),
                 clean_text(r.get("Part Code")), desc,
                 clean_text(r.get("Quantity")), clean_text(r.get("UOM")),
                 money(r.get("Unit Cost")), money(r.get("Total Cost")),
@@ -1180,7 +1180,7 @@ def pdf_bytes(internal=False, bom=None, final_price=0.0):
             ]
         else:
             vals = [
-                clean_text(r.get("S.No.")), clean_text(r.get("Component Type")),
+                clean_text(r.get("S.No.")),
                 clean_text(r.get("Part Code")), desc,
                 clean_text(r.get("Quantity")), clean_text(r.get("UOM")),
                 money(r.get("Unit Price")), money(r.get("Total Price")),
