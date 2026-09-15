@@ -1904,7 +1904,7 @@ def pdf_bytes(
         hAlign="CENTER",
     )
 
-    boq_table.setStyle(
+    boq_table.setStyle()
 
 # ============================================================
 
