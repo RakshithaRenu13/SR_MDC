@@ -982,13 +982,13 @@ def excel_bytes(internal=False, bom=None, final_price=0.0, cost_data=None):
 
         if internal:
             headers = [
-                "S.No.", "Component Type", "Part Code", "Description",
+                "S.No.", "Part Code", "Description",
                 "Quantity", "UOM", "Unit Cost", "Total Cost",
                 "Unit Price", "Total Price"
             ]
         else:
             headers = [
-                "S.No.", "Component Type", "Part Code", "Description",
+                "S.No.", "Part Code", "Description",
                 "Quantity", "UOM", "Unit Price", "Total Price"
             ]
 
@@ -1002,14 +1002,14 @@ def excel_bytes(internal=False, bom=None, final_price=0.0, cost_data=None):
             values = []
             if internal:
                 values = [
-                    r.get("S.No."), r.get("Component Type"), r.get("Part Code"),
+                    r.get("S.No."),  r.get("Part Code"),
                     r.get("Description"), r.get("Quantity"), r.get("UOM"),
                     r.get("Unit Cost"), r.get("Total Cost"),
                     r.get("Unit Price"), r.get("Total Price")
                 ]
             else:
                 values = [
-                    r.get("S.No."), r.get("Component Type"), r.get("Part Code"),
+                    r.get("S.No."),  r.get("Part Code"),
                     r.get("Description"), r.get("Quantity"), r.get("UOM"),
                     r.get("Unit Price"), r.get("Total Price")
                 ]
