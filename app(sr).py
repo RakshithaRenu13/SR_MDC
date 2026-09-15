@@ -2038,8 +2038,6 @@ if not bom.empty:
         ["Freight", freight],
         ["Installation", installation],
         ["Final Selling Price", final_selling_price],
-        ["Warranty %", warranty_pct],
-        ["Warranty Amount", margin_price * warranty_pct / 100],
     ]
 
     sales_excel = excel_bytes(
