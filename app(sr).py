@@ -1947,7 +1947,7 @@ if not bom.empty:
             configs_df["Configuration"]
             == st.session_state.configuration
         ]
-         if not selected_config_row.empty:
+        if not selected_config_row.empty:
             selected_config_title = clean_text(
                 selected_config_row.iloc[0]["Configuration Title"]
             )
