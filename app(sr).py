@@ -322,30 +322,36 @@ def load_master():
             "PART NUMBER", "PART NO", "PART CODE"
         }
 
+
     # --------------------------------------------------------
     # SINGLE-RACK CONFIGURATIONS
     # Excel layout:
-    #   Solution 1 -> rows 1-25, A:E
-    #   Solution 3 -> rows 1-25, F:J
-    #   Solution 2 -> rows 26-50, A:E
-    #   Solution 4 -> rows 26-50, F:J
+    #
+    # Solution 1 -> rows 1-25, A:E
+    # Solution 3 -> rows 1-25, F:J
+    # Solution 2 -> rows 26-50, A:E
+    # Solution 4 -> rows 26-50, F:J
     # --------------------------------------------------------
+
     block_info = {
         "Configuration 1": {
             "start": 0, "end": 25,
             "part": 0, "desc": 1, "qty": 2,
             "uom": 3, "price": 4,
         },
+
         "Configuration 3": {
             "start": 0, "end": 25,
             "part": 5, "desc": 6, "qty": 7,
             "uom": 8, "price": 9,
         },
+
         "Configuration 2": {
             "start": 25, "end": 50,
             "part": 0, "desc": 1, "qty": 2,
             "uom": 3, "price": 4,
         },
+
         "Configuration 4": {
             "start": 25, "end": 50,
             "part": 5, "desc": 6, "qty": 7,
@@ -357,70 +363,112 @@ def load_master():
     component_rows = []
 
     for config_name, info in block_info.items():
-        block = sheet.iloc[info["start"]:info["end"]]
+
+        block = sheet.iloc[
+            info["start"]:info["end"]
+        ].copy()
+
+        if block.empty:
+            continue
+
+        # ----------------------------------------------------
+        # READ CONFIGURATION TITLE DIRECTLY FROM THE FIRST ROW
+        # OF THE SELECTED EXCEL SOLUTION BLOCK
+        # ----------------------------------------------------
+
         first_row = block.iloc[0]
 
-        excel_solution_title = clean_text(
-            first_row.iloc[info["desc_col"]]
+        solution_title = get(
+            first_row,
+            info["desc"]
         )
-        # Remove line breaks and extra spaces for clean display.
-        excel_solution_title = " ".join(
-            excel_solution_title.split()
+
+        # Clean line breaks / extra spaces
+        solution_title = " ".join(
+            solution_title.split()
         )
-        info["title"] = excel_solution_title
-        for excel_row, (_, row) in enumerate(
-            block.iterrows(),
-            start=info["start"] + 1
+
+        # Remove unwanted SOLUTION labels if present
+        for label in [
+            "SOLUTION 1",
+            "SOLUTION 2",
+            "SOLUTION 3",
+            "SOLUTION 4",
+        ]:
+            solution_title = solution_title.replace(
+                label,
+                ""
+            )
+
+        solution_title = " ".join(
+            solution_title.split()
+        ).strip(" -")
+
+        # Fallback only if Excel title is empty
+        if not solution_title:
+            solution_title = config_name
+
+        # ----------------------------------------------------
+        # READ COMPONENTS FROM EXCEL
+        #
+        # Row 1 = configuration title
+        # Row 2 = column headings
+        # Remaining rows = actual BOM components
+        # ----------------------------------------------------
+
+        for local_index, (_, row) in enumerate(
+            block.iterrows()
         ):
-            part = clean_text(row.iloc[info["part_col"]])
-            desc = clean_text(row.iloc[info["desc_col"]])
-            qty = numeric(row.iloc[info["qty_col"]])
-            uom = clean_text(row.iloc[info["uom_col"]])
-            price = numeric(row.iloc[info["price_col"]])
-            
-            if excel_row == info["start"] + 1:
+
+            # Skip first row:
+            # configuration title
+            if local_index == 0:
                 continue
-            if not desc and not part:
+
+            # Skip second row:
+            # PART NUMBER / DESCRIPTION / QTY / UOM / PRICE
+            if local_index == 1:
                 continue
-            if part.upper() == "PART NUMBER":
+
+            part = get(
+                row,
+                info["part"]
+            )
+
+            desc = get(
+                row,
+                info["desc"]
+            )
+
+            qty = numeric(
+                row.iloc[info["qty"]]
+            )
+
+            uom = get(
+                row,
+                info["uom"]
+            )
+
+            price = numeric(
+                row.iloc[info["price"]]
+            )
+
+            # Skip completely empty rows
+            if not part and not desc:
                 continue
-            if part == "CTO3M002":
+
+            # Skip header rows
+            if part.upper() in {
+                "PART NUMBER",
+                "PART NO",
+                "PART CODE",
+            }:
                 continue
-        
 
-
-        # # Read the actual solution title from Excel.
-        # solution_title = get(block.iloc[0], 0)
-        # if not solution_title:
-        #     solution_title = config_name
-
-        # # Remove Excel line breaks for cleaner UI text.
-        # solution_title = " ".join(solution_title.split())
-        # solution_title = solution_title.replace("SOLUTION 1", "").replace("SOLUTION 2", "")
-        # solution_title = solution_title.replace("SOLUTION 3", "").replace("SOLUTION 4", "")
-        # solution_title = " ".join(solution_title.split()).strip(" -")
-
-        # for local_index, (_, row) in enumerate(block.iterrows()):
-        #     # First row = solution title
-        #     # Second row = column headings
-        #     if local_index in (0, 1):
-        #         continue
-
-        #     part = get(row, info["part"])
-        #     desc = get(row, info["desc"])
-        #     qty = numeric(row.iloc[info["qty"]])
-        #     uom = get(row, info["uom"])
-        #     price = numeric(row.iloc[info["price"]])
-
-        #     if not part and not desc:
-        #         continue
-
-        #     if part.upper() in {"PART NUMBER", "PART NO", "PART CODE"}:
-        #         continue
-
-        #     # CTO is the configuration heading, not a priced BOQ line.
-        #     if part.upper() == "CTO3M002":
-        #         continue
+            # CTO3M002 represents the configuration heading
+            # and must NOT appear as a priced BOQ line.
+            if part.upper() == "CTO3M002":
+                continue
 
             component_rows.append({
                 "MDC Type": "Single Rack",
@@ -428,28 +476,54 @@ def load_master():
                 "Configuration Title": solution_title,
                 "Part Code": part,
                 "Description": desc,
-                "Quantity": 0.0 if pd.isna(qty) else float(qty),
-                "UOM": uom if uom else "EA",
+                "Quantity": (
+                    0.0
+                    if pd.isna(qty)
+                    else float(qty)
+                ),
+                "UOM": (
+                    uom
+                    if uom
+                    else "EA"
+                ),
                 "Unit Cost": price,
             })
 
+        # ----------------------------------------------------
+        # CALCULATE BASE COST FOR THIS CONFIGURATION
+        # ----------------------------------------------------
+
         cfg_components = pd.DataFrame([
-            r for r in component_rows
+            r
+            for r in component_rows
             if r["Configuration"] == config_name
         ])
 
         if cfg_components.empty:
+
             base_cost = 0.0
+
         else:
+
             base_cost = float(
-                pd.to_numeric(cfg_components["Unit Cost"], errors="coerce")
+                pd.to_numeric(
+                    cfg_components["Unit Cost"],
+                    errors="coerce"
+                )
                 .fillna(0)
                 .mul(
-                    pd.to_numeric(cfg_components["Quantity"], errors="coerce")
+                    pd.to_numeric(
+                        cfg_components["Quantity"],
+                        errors="coerce"
+                    )
                     .fillna(0)
                 )
                 .sum()
             )
+
+        # ----------------------------------------------------
+        # STORE CONFIGURATION
+        # ----------------------------------------------------
 
         config_rows.append({
             "MDC Type": "Single Rack",
@@ -458,8 +532,16 @@ def load_master():
             "Base Cost": base_cost,
         })
 
+    # --------------------------------------------------------
+    # FINAL DATAFRAMES
+    # --------------------------------------------------------
+
     configs = pd.DataFrame(config_rows)
+
     components = pd.DataFrame(component_rows)
+
+
+Then keep your **Multirack placeholders** exactly as you already have them:
 
     # --------------------------------------------------------
     # MULTIRACK PLACEHOLDERS
@@ -470,10 +552,16 @@ def load_master():
             pd.DataFrame([{
                 "MDC Type": "Multirack",
                 "Configuration": f"Configuration {n}",
-                "Configuration Title": f"Multirack Configuration {n} - XXX",
+                "Configuration Title": (
+                    f"Multirack Configuration {n} - XXX"
+                ),
                 "Base Cost": 0.0,
             }])
         ], ignore_index=True)
+
+
+And keep your **Other Optional Items** section after that unchanged.
+
 
     # --------------------------------------------------------
     # OTHER OPTIONAL ITEMS
