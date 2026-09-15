@@ -1070,7 +1070,7 @@ def pdf_bytes(internal=False, bom=None, final_price=0.0):
     info_table = Table(info_data, colWidths=[42 * mm, 90 * mm])
     info_table.setStyle(TableStyle([
         ("GRID", (0, 0), (-1, -1), 0.35, colors.grey),
-        ("BACKGROUND", (0, 0), (0, -1), colors.HexColor("D9EAF7")),
+        ("BACKGROUND", (0, 0), (0, -1), colors.HexColor("#D9EAF7")),
         ("VALIGN", (0, 0), (-1, -1), "TOP"),
         ("LEFTPADDING", (0, 0), (-1, -1), 5),
         ("RIGHTPADDING", (0, 0), (-1, -1), 5),
@@ -1117,7 +1117,7 @@ def pdf_bytes(internal=False, bom=None, final_price=0.0):
 
     boq_table = Table(table_data, colWidths=widths, repeatRows=1)
     boq_table.setStyle(TableStyle([
-        ("BACKGROUND", (0, 0), (-1, 0), colors.HexColor("003B71")),
+        ("BACKGROUND", (0, 0), (-1, 0), colors.HexColor("#003B71")),
         ("TEXTCOLOR", (0, 0), (-1, 0), colors.white),
         ("FONTNAME", (0, 0), (-1, 0), "Helvetica-Bold"),
         ("FONTSIZE", (0, 0), (-1, -1), 7),
@@ -1150,12 +1150,12 @@ def pdf_bytes(internal=False, bom=None, final_price=0.0):
 
     summary_table.setStyle(TableStyle([
         ("GRID", (0, 0), (-1, -1), 0.4, colors.grey),
-        ("BACKGROUND", (0, 0), (-1, -1), colors.HexColor("F4F8FC")),
+        ("BACKGROUND", (0, 0), (-1, -1), colors.HexColor("#F4F8FC")),
         ("FONTNAME", (0, 0), (-1, -1), "Helvetica-Bold"),
         ("FONTSIZE", (0, 0), (-1, -1), 8),
         ("ALIGN", (1, 0), (-1, -1), "RIGHT"),
         ("SPAN", (0, -1), (2, -1)) if internal else ("SPAN", (0, 0), (0, 0)),
-        ("TEXTCOLOR", (0, -1), (-1, -1), colors.HexColor("003B71")),
+        ("TEXTCOLOR", (0, -1), (-1, -1), colors.HexColor("#003B71")),
     ]))
     story += [summary_table]
 
