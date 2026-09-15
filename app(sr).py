@@ -541,7 +541,6 @@ def load_master():
     components = pd.DataFrame(component_rows)
 
 
-Then keep your **Multirack placeholders** exactly as you already have them:
 
     # --------------------------------------------------------
     # MULTIRACK PLACEHOLDERS
