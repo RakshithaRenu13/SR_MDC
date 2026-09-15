@@ -2239,261 +2239,261 @@ with main_right:
 #         )
 
 
-#         # ====================================================
-#         # ACCESSORY LOOKUP FROM EXCEL
-#         # ====================================================
-
-#         optional_lookup = {
-#             clean_text(r["Part Code"]): r
-#             for _, r in accessories_df.iterrows()
-#             if clean_text(r["Part Code"])
-#         }
+        # ====================================================
+        # ACCESSORY LOOKUP FROM EXCEL
+        # ====================================================
+
+        optional_lookup = {
+            clean_text(r["Part Code"]): r
+            for _, r in accessories_df.iterrows()
+            if clean_text(r["Part Code"])
+        }
 
 
-#         def excel_optional_rows(keyword=None):
-#             """Find optional items by Excel part number/description."""
+        def excel_optional_rows(keyword=None):
+            """Find optional items by Excel part number/description."""
 
-#             if accessories_df.empty:
-#                 return pd.DataFrame()
+            if accessories_df.empty:
+                return pd.DataFrame()
 
-#             if not keyword:
-#                 return accessories_df.copy()
-
-#             key = str(keyword).upper()
-
-#             mask = (
-#                 accessories_df["Part Code"]
-#                 .astype(str)
-#                 .str.upper()
-#                 .str.contains(
-#                     key,
-#                     na=False
-#                 )
-#                 |
-#                 accessories_df["Description"]
-#                 .astype(str)
-#                 .str.upper()
-#                 .str.contains(
-#                     key,
-#                     na=False
-#                 )
-#             )
-
-#             return accessories_df[mask].copy()
-
-
-#         def remove_rows(rows):
-
-#             for _, r in rows.iterrows():
-
-#                 part = clean_text(
-#                     r["Part Code"]
-#                 )
-
-#                 if part:
-#                     st.session_state.accessory_qty.pop(
-#                         part,
-#                         None
-#                     )
-
-
-#         def add_rows(rows, quantity=1):
-
-#             for _, r in rows.iterrows():
+            if not keyword:
+                return accessories_df.copy()
+
+            key = str(keyword).upper()
+
+            mask = (
+                accessories_df["Part Code"]
+                .astype(str)
+                .str.upper()
+                .str.contains(
+                    key,
+                    na=False
+                )
+                |
+                accessories_df["Description"]
+                .astype(str)
+                .str.upper()
+                .str.contains(
+                    key,
+                    na=False
+                )
+            )
+
+            return accessories_df[mask].copy()
+
+
+        def remove_rows(rows):
+
+            for _, r in rows.iterrows():
+
+                part = clean_text(
+                    r["Part Code"]
+                )
+
+                if part:
+                    st.session_state.accessory_qty.pop(
+                        part,
+                        None
+                    )
+
+
+        def add_rows(rows, quantity=1):
+
+            for _, r in rows.iterrows():
 
-#                 part = clean_text(
-#                     r["Part Code"]
-#                 )
+                part = clean_text(
+                    r["Part Code"]
+                )
 
-#                 if part:
+                if part:
 
-#                     st.session_state.accessory_qty[
-#                         part
-#                     ] = quantity
+                    st.session_state.accessory_qty[
+                        part
+                    ] = quantity
 
 
-#         # ====================================================
-#         # FIRE SUPPRESSION
-#         # ====================================================
+        # ====================================================
+        # FIRE SUPPRESSION
+        # ====================================================
 
-#         # st.markdown(
-#         #     '<div class="mdc-mini-heading">'
-#         #     'Fire Suppression'
-#         #     '</div>',
-#         #     unsafe_allow_html=True
-#         # )
+        # st.markdown(
+        #     '<div class="mdc-mini-heading">'
+        #     'Fire Suppression'
+        #     '</div>',
+        #     unsafe_allow_html=True
+        # )
 
-#         fire_rows = excel_optional_rows("FIRE")
+        fire_rows = excel_optional_rows("FIRE")
 
-#         external_fire = fire_rows[
-#             fire_rows["Description"]
-#             .astype(str)
-#             .str.upper()
-#             .str.contains(
-#                 "EXTERNAL",
-#                 na=False
-#             )
-#         ].copy()
+        external_fire = fire_rows[
+            fire_rows["Description"]
+            .astype(str)
+            .str.upper()
+            .str.contains(
+                "EXTERNAL",
+                na=False
+            )
+        ].copy()
 
-#         internal_fire = fire_rows[
-#             fire_rows["Description"]
-#             .astype(str)
-#             .str.upper()
-#             .str.contains(
-#                 "INTERNAL|IN-RACK",
-#                 na=False
-#             )
-#         ].copy()
-
-
-#         fire_current = "None"
-
-#         if not external_fire.empty:
-
-#             if any(
-#                 numeric(
-#                     st.session_state.accessory_qty.get(
-#                         p,
-#                         0
-#                     )
-#                 ) > 0
-#                 for p in external_fire[
-#                     "Part Code"
-#                 ].astype(str).str.strip()
-#             ):
-#                 fire_current = "External"
-
-
-#         elif not internal_fire.empty:
-
-#             if any(
-#                 numeric(
-#                     st.session_state.accessory_qty.get(
-#                         p,
-#                         0
-#                     )
-#                 ) > 0
-#                 for p in internal_fire[
-#                     "Part Code"
-#                 ].astype(str).str.strip()
-#             ):
-#                 fire_current = "Internal"
+        internal_fire = fire_rows[
+            fire_rows["Description"]
+            .astype(str)
+            .str.upper()
+            .str.contains(
+                "INTERNAL|IN-RACK",
+                na=False
+            )
+        ].copy()
+
+
+        fire_current = "None"
+
+        if not external_fire.empty:
+
+            if any(
+                numeric(
+                    st.session_state.accessory_qty.get(
+                        p,
+                        0
+                    )
+                ) > 0
+                for p in external_fire[
+                    "Part Code"
+                ].astype(str).str.strip()
+            ):
+                fire_current = "External"
+
+
+        elif not internal_fire.empty:
+
+            if any(
+                numeric(
+                    st.session_state.accessory_qty.get(
+                        p,
+                        0
+                    )
+                ) > 0
+                for p in internal_fire[
+                    "Part Code"
+                ].astype(str).str.strip()
+            ):
+                fire_current = "Internal"
 
 
-#         fire_selection = st.radio(
-#             "Fire Suppression",
-#             ["None", "External", "Internal"],
+        fire_selection = st.radio(
+            "Fire Suppression",
+            ["None", "External", "Internal"],
 
-#             index=[
-#                 "None",
-#                 "External",
-#                 "Internal"
-#             ].index(fire_current),
+            index=[
+                "None",
+                "External",
+                "Internal"
+            ].index(fire_current),
 
-#             horizontal=True,
+            horizontal=True,
 
-#             key="fire_suppression_selection",
-#         )
+            key="fire_suppression_selection",
+        )
 
 
-#         remove_rows(external_fire)
-#         remove_rows(internal_fire)
+        remove_rows(external_fire)
+        remove_rows(internal_fire)
 
 
-#         if fire_selection == "External":
+        if fire_selection == "External":
 
-#             add_rows(
-#                 external_fire,
-#                 1
-#             )
+            add_rows(
+                external_fire,
+                1
+            )
 
-#         elif fire_selection == "Internal":
+        elif fire_selection == "Internal":
 
-#             add_rows(
-#                 internal_fire,
-#                 1
-#             )
+            add_rows(
+                internal_fire,
+                1
+            )
 
 
-#         # ====================================================
-#         # CAMERA
-#         # ====================================================
+        # ====================================================
+        # CAMERA
+        # ====================================================
 
-#         # st.markdown(
-#         #     '<div class="mdc-mini-heading">'
-#         #     'Camera'
-#         #     '</div>',
-#         #     unsafe_allow_html=True
-#         # )
+        # st.markdown(
+        #     '<div class="mdc-mini-heading">'
+        #     'Camera'
+        #     '</div>',
+        #     unsafe_allow_html=True
+        # )
 
-#         camera_rows = excel_optional_rows(
-#             "CAMERA"
-#         )
+        camera_rows = excel_optional_rows(
+            "CAMERA"
+        )
 
-#         camera_parts = (
-#             camera_rows["Part Code"]
-#             .astype(str)
-#             .str.strip()
-#             .tolist()
-#             if not camera_rows.empty
-#             else []
-#         )
+        camera_parts = (
+            camera_rows["Part Code"]
+            .astype(str)
+            .str.strip()
+            .tolist()
+            if not camera_rows.empty
+            else []
+        )
 
 
-#         camera_current = (
-#             "Yes"
-#             if any(
-#                 numeric(
-#                     st.session_state.accessory_qty.get(
-#                         p,
-#                         0
-#                     )
-#                 ) > 0
-#                 for p in camera_parts
-#             )
-#             else "No"
-#         )
+        camera_current = (
+            "Yes"
+            if any(
+                numeric(
+                    st.session_state.accessory_qty.get(
+                        p,
+                        0
+                    )
+                ) > 0
+                for p in camera_parts
+            )
+            else "No"
+        )
 
 
-#         camera_selection = st.radio(
-#             "Camera",
-#             ["Yes", "No"],
+        camera_selection = st.radio(
+            "Camera",
+            ["Yes", "No"],
 
-#             index=[
-#                 "Yes",
-#                 "No"
-#             ].index(camera_current),
+            index=[
+                "Yes",
+                "No"
+            ].index(camera_current),
 
-#             horizontal=True,
+            horizontal=True,
 
-#             key="camera_system_selection",
-#         )
+            key="camera_system_selection",
+        )
 
 
-#         if camera_selection == "Yes":
+        if camera_selection == "Yes":
 
-#             add_rows(
-#                 camera_rows,
-#                 1
-#             )
+            add_rows(
+                camera_rows,
+                1
+            )
 
-#         else:
+        else:
 
-#             remove_rows(
-#                 camera_rows
-#             )
+            remove_rows(
+                camera_rows
+            )
 
 
-#         # ====================================================
-#         # OTHER OPTIONAL ACCESSORIES
-#         # ====================================================
+        # ====================================================
+        # OTHER OPTIONAL ACCESSORIES
+        # ====================================================
 
-#         st.markdown(
-#             '<div class="mdc-mini-heading">'
-#             'Optional Accessories'
-#             '</div>',
-#             unsafe_allow_html=True
-#         )
+        st.markdown(
+            '<div class="mdc-mini-heading">'
+            'Optional Accessories'
+            '</div>',
+            unsafe_allow_html=True
+        )
 
 
         other_accessory_keywords = [
