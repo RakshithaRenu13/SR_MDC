@@ -784,11 +784,38 @@ def selected_config_record():
 
 
 def selected_components():
-    return components_df[
+    df = components_df[
         (components_df["MDC Type"] == st.session_state.mdc_type)
         & (components_df["Configuration"] == st.session_state.configuration)
     ].copy()
 
+    # ------------------------------------------------------------
+    # FIX DUPLICATE MAIN MDC PART NUMBER
+    # ------------------------------------------------------------
+    # 801029209 is the main MDC part.
+    # In Config 2/4, the Excel master also contains 801029209
+    # on the FRAME row, which incorrectly duplicates its price.
+    #
+    # Keep 801029209 only on the actual MDC row.
+    # The FRAME row remains in the BOQ but without Part Code/Price.
+    # ------------------------------------------------------------
+
+    main_mdc_part = "801029209"
+    main_mdc_found = False
+
+    for idx in df.index:
+        part = clean_text(df.at[idx, "Part Code"])
+
+        if part == main_mdc_part:
+            if not main_mdc_found:
+                # Keep the first/main MDC occurrence
+                main_mdc_found = True
+            else:
+                # Remove duplicate part number and price
+                df.at[idx, "Part Code"] = ""
+                df.at[idx, "Unit Cost"] = float("nan")
+
+    return df
 
 # ============================================================
 # BOM
