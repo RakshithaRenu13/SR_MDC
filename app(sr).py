@@ -2012,12 +2012,12 @@ with main_right:
         # FIRE SUPPRESSION
         # ====================================================
 
-        st.markdown(
-            '<div class="mdc-mini-heading">'
-            'Fire Suppression'
-            '</div>',
-            unsafe_allow_html=True
-        )
+        # st.markdown(
+        #     '<div class="mdc-mini-heading">'
+        #     'Fire Suppression'
+        #     '</div>',
+        #     unsafe_allow_html=True
+        # )
 
         fire_rows = excel_optional_rows("FIRE")
 
