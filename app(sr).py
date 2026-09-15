@@ -559,9 +559,6 @@ def load_master():
         ], ignore_index=True)
 
 
-And keep your **Other Optional Items** section after that unchanged.
-
-
     # --------------------------------------------------------
     # OTHER OPTIONAL ITEMS
     # Locate the section by its Excel heading instead of using
