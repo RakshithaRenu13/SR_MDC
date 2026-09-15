@@ -294,17 +294,16 @@ init_tracking_db()
 
 # ============================================================
 # LOAD THE ONE-SHEET EXCEL MASTER
-# EVERYTHING USED BY THE UI IS READ FROM MDC_Master_V1.xlsx
 # ============================================================
 
 @st.cache_data
-
 def load_master():
     if not os.path.exists(MASTER_FILE):
         raise FileNotFoundError(
             f"MDC_Master_V1.xlsx was not found in: {BASE_DIR}"
         )
 
+    # Read exactly as laid out in the supplied one-sheet workbook.
     sheet = pd.read_excel(
         MASTER_FILE,
         sheet_name=0,
@@ -312,44 +311,61 @@ def load_master():
         engine="openpyxl",
     )
 
-    def get(row, col):
-        if col >= len(row):
-            return ""
-        return clean_text(row.iloc[col])
-
-    def is_part_header(value):
-        return get(pd.Series([value]), 0).upper() in {
-            "PART NUMBER", "PART NO", "PART CODE"
-        }
-
     # --------------------------------------------------------
-    # SINGLE-RACK CONFIGURATIONS
-    # Excel layout:
-    #   Solution 1 -> rows 1-25, A:E
-    #   Solution 3 -> rows 1-25, F:J
-    #   Solution 2 -> rows 26-50, A:E
-    #   Solution 4 -> rows 26-50, F:J
+    # Configuration blocks
+    #
+    # Solution 1: Excel rows 1-24, columns A-E
+    # Solution 3: Excel rows 1-24, columns F-J
+    # Solution 2: Excel rows 26-49, columns A-E
+    # Solution 4: Excel rows 26-49, columns F-J
+    #
+    # Python indexes are zero-based.
     # --------------------------------------------------------
+
     block_info = {
         "Configuration 1": {
-            "start": 0, "end": 25,
-            "part": 0, "desc": 1, "qty": 2,
-            "uom": 3, "price": 4,
+            "mdc_type": "Single Rack",
+            "title": "3.5kW Cooling W/o Dehumidifier",
+            "start": 0,
+            "end": 24,
+            "part_col": 0,
+            "desc_col": 1,
+            "qty_col": 2,
+            "uom_col": 3,
+            "price_col": 4,
         },
         "Configuration 3": {
-            "start": 0, "end": 25,
-            "part": 5, "desc": 6, "qty": 7,
-            "uom": 8, "price": 9,
+            "mdc_type": "Single Rack",
+            "title": "7kW Cooling W/o Dehumidifier",
+            "start": 0,
+            "end": 24,
+            "part_col": 5,
+            "desc_col": 6,
+            "qty_col": 7,
+            "uom_col": 8,
+            "price_col": 9,
         },
         "Configuration 2": {
-            "start": 25, "end": 50,
-            "part": 0, "desc": 1, "qty": 2,
-            "uom": 3, "price": 4,
+            "mdc_type": "Single Rack",
+            "title": "3.5kW Cooling With Dehumidifier",
+            "start": 25,
+            "end": 49,
+            "part_col": 0,
+            "desc_col": 1,
+            "qty_col": 2,
+            "uom_col": 3,
+            "price_col": 4,
         },
         "Configuration 4": {
-            "start": 25, "end": 50,
-            "part": 5, "desc": 6, "qty": 7,
-            "uom": 8, "price": 9,
+            "mdc_type": "Single Rack",
+            "title": "7kW Cooling With Dehumidifier",
+            "start": 25,
+            "end": 49,
+            "part_col": 5,
+            "desc_col": 6,
+            "qty_col": 7,
+            "uom_col": 8,
+            "price_col": 9,
         },
     }
 
@@ -357,56 +373,53 @@ def load_master():
     component_rows = []
 
     for config_name, info in block_info.items():
-        block = sheet.iloc[info["start"]:info["end"]]
+        block = sheet.iloc[info["start"]:info["end"]].copy()
 
-        # Read the actual solution title from Excel.
-        solution_title = get(block.iloc[0], 0)
-        if not solution_title:
-            solution_title = config_name
+        # Read the configuration title directly from the first Excel row.
+        # Keep the existing BOM parsing unchanged.
+        first_row = block.iloc[0]
+        info["excel_title"] = " ".join(
+            clean_text(first_row.iloc[info["desc_col"]]).split()
+        ).strip()
 
-        # Remove Excel line breaks for cleaner UI text.
-        solution_title = " ".join(solution_title.split())
-        solution_title = solution_title.replace("SOLUTION 1", "").replace("SOLUTION 2", "")
-        solution_title = solution_title.replace("SOLUTION 3", "").replace("SOLUTION 4", "")
-        solution_title = " ".join(solution_title.split()).strip(" -")
+        for excel_row, (_, row) in enumerate(block.iterrows(), start=info["start"] + 1):
+            part = clean_text(row.iloc[info["part_col"]])
+            desc = clean_text(row.iloc[info["desc_col"]])
+            qty = numeric(row.iloc[info["qty_col"]])
+            uom = clean_text(row.iloc[info["uom_col"]])
+            price = numeric(row.iloc[info["price_col"]])
 
-        for local_index, (_, row) in enumerate(block.iterrows()):
-            # First row = solution title
-            # Second row = column headings
-            if local_index in (0, 1):
+            if excel_row == info["start"] + 1:
+                # Solution title row; the actual CTO description is on the next row.
                 continue
 
-            part = get(row, info["part"])
-            desc = get(row, info["desc"])
-            qty = numeric(row.iloc[info["qty"]])
-            uom = get(row, info["uom"])
-            price = numeric(row.iloc[info["price"]])
-
-            if not part and not desc:
+            if not desc and not part:
                 continue
 
-            if part.upper() in {"PART NUMBER", "PART NO", "PART CODE"}:
+            # Skip repeated column header rows.
+            if part.upper() == "PART NUMBER":
                 continue
 
-            # CTO is the configuration heading, not a priced BOQ line.
-            if part.upper() == "CTO3M002":
+            # The CTO row has no numeric price and is used as the visible
+            # configuration heading in the final BOQ.
+            if part == "CTO3M002":
                 continue
 
             component_rows.append({
-                "MDC Type": "Single Rack",
+                "MDC Type": info["mdc_type"],
                 "Configuration": config_name,
-                "Configuration Title": solution_title,
+                "Configuration Title": info.get("excel_title", info.get("title", "")),
                 "Part Code": part,
                 "Description": desc,
-                "Quantity": 0.0 if pd.isna(qty) else float(qty),
-                "UOM": uom if uom else "EA",
+                "Quantity": 0 if pd.isna(qty) else float(qty),
+                "UOM": uom,
                 "Unit Cost": price,
             })
 
-        cfg_components = pd.DataFrame([
-            r for r in component_rows
-            if r["Configuration"] == config_name
-        ])
+        # Base cost is calculated directly from the numeric Excel prices.
+        cfg_components = pd.DataFrame(
+            [r for r in component_rows if r["Configuration"] == config_name]
+        )
 
         if cfg_components.empty:
             base_cost = 0.0
@@ -422,9 +435,9 @@ def load_master():
             )
 
         config_rows.append({
-            "MDC Type": "Single Rack",
+            "MDC Type": info["mdc_type"],
             "Configuration": config_name,
-            "Configuration Title": solution_title,
+            "Configuration Title": info.get("excel_title", info.get("title", "")),
             "Base Cost": base_cost,
         })
 
@@ -432,7 +445,7 @@ def load_master():
     components = pd.DataFrame(component_rows)
 
     # --------------------------------------------------------
-    # MULTIRACK PLACEHOLDERS
+    # Multirack placeholders
     # --------------------------------------------------------
     for n in range(1, 10):
         configs = pd.concat([
@@ -446,99 +459,80 @@ def load_master():
         ], ignore_index=True)
 
     # --------------------------------------------------------
-    # OTHER OPTIONAL ITEMS
-    # Locate the section by its Excel heading instead of using
-    # hardcoded row numbers.
+    # Other optional items
+    # Excel rows 52-61 -> Python rows 51-60
+    # Columns A-E
     # --------------------------------------------------------
     accessories = []
-    optional_start = None
-    optional_end = None
 
-    for i in range(len(sheet)):
-        text = " ".join(get(sheet.iloc[i], 0).split()).upper()
-        if "OTHER OPTIONAL ITEMS" in text:
-            optional_start = i + 1
-            continue
-        if optional_start is not None and "SINGLE PHASE PDU" in text:
-            optional_end = i
-            break
+    for _, row in sheet.iloc[51:61].iterrows():
+        part = clean_text(row.iloc[0])
+        desc = clean_text(row.iloc[1])
+        qty = numeric(row.iloc[2])
+        uom = clean_text(row.iloc[3])
+        price = numeric(row.iloc[4])
 
-    if optional_start is not None:
-        if optional_end is None:
-            optional_end = len(sheet)
-
-        for _, row in sheet.iloc[optional_start:optional_end].iterrows():
-            part = get(row, 0)
-            desc = get(row, 1)
-            qty = numeric(row.iloc[2])
-            uom = get(row, 3)
-            price = numeric(row.iloc[4])
-
-            if not part or not desc:
-                continue
-
-            if part.upper() in {"PART NUMBER", "PART NO", "PART CODE"}:
-                continue
-
+        if part and desc:
             accessories.append({
                 "Part Code": part,
                 "Description": desc,
-                "Default Quantity": 1.0 if pd.isna(qty) or qty <= 0 else float(qty),
-                "UOM": uom if uom else "EA",
+                "Default Quantity": 1 if pd.isna(qty) else float(qty),
+                "UOM": uom,
                 "Unit Cost": price,
             })
 
     accessories = pd.DataFrame(accessories)
 
     # --------------------------------------------------------
-    # SINGLE PHASE PDU'S
-    # Locate section dynamically and carry merged TYPE values.
+    # PDU section
+    # Excel rows 64 onward -> Python row 63 onward
+    #
+    # Columns:
+    # A = Part Number
+    # B = Description
+    # C = C13
+    # D = C19
+    # E = TYPE
+    # F = Unit Cost
     # --------------------------------------------------------
     pdus = []
-    pdu_start = None
 
-    for i in range(len(sheet)):
-        text = " ".join(get(sheet.iloc[i], 0).split()).upper()
-        if "SINGLE PHASE PDU" in text:
-            pdu_start = i + 1
-            break
+    for _, row in sheet.iloc[63:].iterrows():
+        part = clean_text(row.iloc[0])
+        desc = clean_text(row.iloc[1])
 
-    current_pdu_type = ""
+        if not part or not desc:
+            continue
 
-    if pdu_start is not None:
-        for _, row in sheet.iloc[pdu_start:].iterrows():
-            part = get(row, 0)
-            desc = get(row, 1)
+        if part.upper() == "PART NUMBER":
+            continue
 
-            if not part and not desc:
-                continue
+        c13 = numeric(row.iloc[2])
+        c19 = numeric(row.iloc[3])
+        pdu_type = clean_text(row.iloc[4])
 
-            if part.upper() in {"PART NUMBER", "PART NO", "PART CODE"}:
-                continue
+        # The Excel uses merged cells for the PDU type.
+        # Carry the last non-empty type downward.
+        if pdu_type:
+            current_pdu_type = pdu_type
+        else:
+            pdu_type = current_pdu_type if "current_pdu_type" in locals() else ""
 
-            c13 = numeric(row.iloc[2])
-            c19 = numeric(row.iloc[3])
-            excel_type = get(row, 4)
-            price = numeric(row.iloc[5])
+        price = numeric(row.iloc[5])
 
-            if excel_type:
-                current_pdu_type = excel_type.upper()
-
-            if not part or not desc or not current_pdu_type:
-                continue
-
-            pdus.append({
-                "Part Code": part,
-                "Description": desc,
-                "C13": 0.0 if pd.isna(c13) else float(c13),
-                "C19": 0.0 if pd.isna(c19) else float(c19),
-                "Type": current_pdu_type,
-                "UOM": "EA",
-                "Unit Cost": price,
-            })
+        pdus.append({
+            "Part Code": part,
+            "Description": desc,
+            "C13": 0 if pd.isna(c13) else float(c13),
+            "C19": 0 if pd.isna(c19) else float(c19),
+            "Type": pdu_type.upper(),
+            "UOM": "EA",
+            "Unit Cost": price,
+        })
 
     pdus = pd.DataFrame(pdus)
 
+    # Normalize all text columns.
     for df in (configs, components, accessories, pdus):
         for col in df.columns:
             if df[col].dtype == object:
@@ -638,7 +632,6 @@ def price_box(label, value):
 # ============================================================
 
 def generate_user_code():
-    """Generate the user code entirely from the current Excel-driven selections."""
     codes = []
 
     config_text = clean_text(st.session_state.configuration)
@@ -646,75 +639,54 @@ def generate_user_code():
         number = config_text.split()[-1]
         codes.append(f"C{number}")
 
-    # Fire suppression is detected from Excel descriptions.
-    fire_selected = []
-    for part, qty in st.session_state.accessory_qty.items():
-        if numeric(qty) <= 0:
-            continue
-        match = accessories_df[
-            accessories_df["Part Code"].astype(str).str.strip() == str(part).strip()
-        ]
-        if not match.empty:
-            desc = clean_text(match.iloc[0]["Description"]).upper()
-            if "FIRE" in desc:
-                fire_selected.append(desc)
+    fire_code = None
 
-    if any("EXTERNAL" in x for x in fire_selected):
-        codes.append("F-EXT")
-    elif any("INTERNAL" in x or "IN-RACK" in x for x in fire_selected):
-        codes.append("F-INT")
+    for part in ("801073203", "HRD-XH1C"):
+        if st.session_state.accessory_qty.get(part, 0) > 0:
+            row = accessories_df[
+                accessories_df["Part Code"].astype(str).str.strip() == part
+            ]
+            if not row.empty:
+                desc = clean_text(row.iloc[0]["Description"]).upper()
+                if "EXTERNAL" in desc:
+                    fire_code = "F-EXT"
+                elif "INTERNAL" in desc:
+                    fire_code = "F-INT"
 
-    # Camera is detected from Excel descriptions, not hardcoded part numbers.
-    camera_selected = False
-    for part, qty in st.session_state.accessory_qty.items():
-        if numeric(qty) <= 0:
-            continue
-        match = accessories_df[
-            accessories_df["Part Code"].astype(str).str.strip() == str(part).strip()
-        ]
-        if not match.empty and "CAMERA" in clean_text(match.iloc[0]["Description"]).upper():
-            camera_selected = True
-            break
+    if fire_code:
+        codes.append(fire_code)
 
-    if camera_selected:
+    if any(
+        st.session_state.accessory_qty.get(part, 0) > 0
+        for part in CAMERA_PARTS
+    ):
         codes.append("CAM")
 
-    # Other accessory codes are detected by their Excel descriptions.
-    accessory_code_map = [
-        ("KEYBOARD", "KT"),
-        ("CABLE MANAGER", "CM"),
-        ("TOP CABLE TRAY", "TCT"),
-        ("BRUSH PANEL", "BP"),
-    ]
+    accessory_code_map = {
+        "801223664": "KT",
+        "801075237": "CM",
+        "801029022": "TCT",
+        "801075235": "BP",
+    }
 
-    for keyword, code in accessory_code_map:
-        selected = False
-        for part, qty in st.session_state.accessory_qty.items():
-            if numeric(qty) <= 0:
-                continue
-            match = accessories_df[
-                accessories_df["Part Code"].astype(str).str.strip() == str(part).strip()
-            ]
-            if not match.empty and keyword in clean_text(match.iloc[0]["Description"]).upper():
-                selected = True
-                break
-        if selected:
+    for part, code in accessory_code_map.items():
+        if st.session_state.accessory_qty.get(part, 0) > 0:
             codes.append(code)
 
-    # PDU code is obtained from Excel TYPE.
     for part, qty in st.session_state.pdu_qty.items():
-        if numeric(qty) <= 0:
+        if qty <= 0:
             continue
+
         pdu_row = pdus_df[
             pdus_df["Part Code"].astype(str).str.strip() == str(part).strip()
         ]
+
         if not pdu_row.empty:
             pdu_type = clean_text(pdu_row.iloc[0]["Type"]).upper()
             pdu_map = {
                 "BASIC": "B-PDU",
                 "METERED": "M-PDU",
                 "SWITCHED": "S-PDU",
-                "MANAGED": "MG-PDU",
             }
             if pdu_type in pdu_map:
                 codes.append(pdu_map[pdu_type])
@@ -1201,10 +1173,26 @@ def pdf_bytes(internal=False, bom=None, final_price=0.0):
 # ============================================================
 
 # CONSTANTS USED BY UI
-# No product part numbers are hardcoded here.
-# Product details are read from MDC_Master_V1.xlsx.
+# ============================================================
+
+CAMERA_PARTS = [
+    "801303201",
+    "801303202",
+    "801303204",
+    "801303206",
+    "801303208",
+    "801303203",
+]
+
+OTHER_OPTIONAL_PARTS = [
+    ("801223664", "Rotating Keyboard Tray"),
+    ("801075237", "Cable Manager"),
+    ("801029022", "Top Cable Tray"),
+    ("801075235", "Brush Panel"),
+]
 
 
+# ============================================================
 # HEADER
 # ============================================================
 
@@ -1412,82 +1400,67 @@ if labels:
 
 section_header("3. PDU SELECTION")
 
-# PDU types are generated from the TYPE column in Excel.
-pdu_type_display = {
-    "BASIC": "Basic PDU",
-    "METERED": "Metered PDU",
-    "SWITCHED": "Switched PDU",
-    "MANAGED": "Managed PDU",
-}
-
-excel_pdu_types = []
-if not pdus_df.empty:
-    excel_pdu_types = [
-        x for x in pdus_df["Type"].astype(str).str.strip().str.upper().unique().tolist()
-        if x
-    ]
-
-pdu_types = ["None"] + [
-    pdu_type_display.get(x, f"{x.title()} PDU")
-    for x in excel_pdu_types
+pdu_types = [
+    "None",
+    "Basic PDU",
+    "Metered PDU",
+    "Switched PDU",
 ]
 
 col1, col2 = st.columns([2, 5])
 
 with col1:
-    previous_pdu_type = st.session_state.get("pdu_type_selection", "None")
-    if previous_pdu_type not in pdu_types:
-        previous_pdu_type = "None"
-
     selected_pdu_type = st.selectbox(
         "PDU Type",
         pdu_types,
-        index=pdu_types.index(previous_pdu_type),
+        index=0,
         key="pdu_type_selection",
     )
 
 with col2:
     if selected_pdu_type != "None":
-        reverse_type = {v: k for k, v in pdu_type_display.items()}
-        excel_pdu_type = reverse_type.get(
-            selected_pdu_type,
-            selected_pdu_type.replace(" PDU", "").upper(),
-        )
+        type_mapping = {
+            "Basic PDU": "BASIC",
+            "Metered PDU": "METERED",
+            "Switched PDU": "SWITCHED",
+        }
+
+        excel_pdu_type = type_mapping[selected_pdu_type]
 
         filtered_pdus = pdus_df[
-            pdus_df["Type"].astype(str).str.strip().str.upper() == excel_pdu_type
+            pdus_df["Type"].astype(str).str.strip().str.upper()
+            == excel_pdu_type
         ].copy()
 
         if not filtered_pdus.empty:
             pdu_options = [
-                f'{clean_text(r["Part Code"])} — {clean_text(r["Description"])}'
+                f'{r["Part Code"]} — {r["Description"]}'
                 for _, r in filtered_pdus.iterrows()
             ]
-
-            old_selection = st.session_state.get("pdu_model_selection")
-            pdu_index = pdu_options.index(old_selection) if old_selection in pdu_options else 0
 
             selected_pdu = st.selectbox(
                 "Select PDU",
                 pdu_options,
-                index=pdu_index,
+                index=0,
                 key="pdu_model_selection",
             )
 
-            selected_row = filtered_pdus.iloc[pdu_options.index(selected_pdu)]
-            selected_part = clean_text(selected_row["Part Code"])
+            selected_index = pdu_options.index(selected_pdu)
+            selected_row = filtered_pdus.iloc[selected_index]
+            part = clean_text(selected_row["Part Code"])
 
-            st.session_state.pdu_qty = {selected_part: 1}
+            st.session_state.pdu_qty = {part: 1}
 
             st.caption(
-                f'Type: {clean_text(selected_row["Type"])} | '
                 f'C13: {numeric(selected_row["C13"]):g} | '
                 f'C19: {numeric(selected_row["C19"]):g} | '
                 f'Excel Unit Price: {money(selected_row["Unit Cost"])}'
             )
         else:
             st.session_state.pdu_qty = {}
-            st.warning(f"No {selected_pdu_type} options found in MDC_Master_V1.xlsx.")
+            st.warning(
+                f"No {selected_pdu_type} options found in MDC_Master_V1.xlsx."
+            )
     else:
         st.session_state.pdu_qty = {}
 
@@ -1498,7 +1471,7 @@ with col2:
 
 section_header("4. OTHER ACCESSORIES")
 
-# Every accessory below comes from the Excel optional-items table.
+# Build accessory lookup.
 optional_lookup = {
     clean_text(r["Part Code"]): r
     for _, r in accessories_df.iterrows()
@@ -1506,57 +1479,15 @@ optional_lookup = {
 }
 
 
-def excel_optional_rows(keyword=None):
-    """Find optional items by their Excel part number/description."""
-    if accessories_df.empty:
-        return pd.DataFrame()
-
-    if not keyword:
-        return accessories_df.copy()
-
-    key = str(keyword).upper()
-    mask = (
-        accessories_df["Part Code"].astype(str).str.upper().str.contains(key, na=False)
-        | accessories_df["Description"].astype(str).str.upper().str.contains(key, na=False)
-    )
-    return accessories_df[mask].copy()
-
-
-def remove_rows(rows):
-    for _, r in rows.iterrows():
-        part = clean_text(r["Part Code"])
-        if part:
-            st.session_state.accessory_qty.pop(part, None)
-
-
-def add_rows(rows, quantity=1):
-    for _, r in rows.iterrows():
-        part = clean_text(r["Part Code"])
-        if part:
-            st.session_state.accessory_qty[part] = quantity
-
-
 # ---------------- FIRE SUPPRESSION ----------------
+
 st.subheader("4.1 Fire Suppression")
 
-fire_rows = excel_optional_rows("FIRE")
-external_fire = fire_rows[
-    fire_rows["Description"].astype(str).str.upper().str.contains("EXTERNAL", na=False)
-].copy()
-internal_fire = fire_rows[
-    fire_rows["Description"].astype(str).str.upper().str.contains("INTERNAL|IN-RACK", na=False)
-].copy()
-
 fire_current = "None"
-if not external_fire.empty and any(
-    numeric(st.session_state.accessory_qty.get(p, 0)) > 0
-    for p in external_fire["Part Code"].astype(str).str.strip()
-):
+
+if st.session_state.accessory_qty.get("801073203", 0) > 0:
     fire_current = "External"
-elif not internal_fire.empty and any(
-    numeric(st.session_state.accessory_qty.get(p, 0)) > 0
-    for p in internal_fire["Part Code"].astype(str).str.strip()
-):
+elif st.session_state.accessory_qty.get("HRD-XH1C", 0) > 0:
     fire_current = "Internal"
 
 fire_selection = st.radio(
@@ -1567,24 +1498,25 @@ fire_selection = st.radio(
     key="fire_suppression_selection",
 )
 
-remove_rows(external_fire)
-remove_rows(internal_fire)
+st.session_state.accessory_qty.pop("801073203", None)
+st.session_state.accessory_qty.pop("HRD-XH1C", None)
 
 if fire_selection == "External":
-    add_rows(external_fire, 1)
+    if "801073203" in optional_lookup:
+        st.session_state.accessory_qty["801073203"] = 1
+
 elif fire_selection == "Internal":
-    add_rows(internal_fire, 1)
+    if "HRD-XH1C" in optional_lookup:
+        st.session_state.accessory_qty["HRD-XH1C"] = 1
 
 
 # ---------------- CAMERA ----------------
+
 st.subheader("4.2 Camera")
 
-camera_rows = excel_optional_rows("CAMERA")
-camera_parts = camera_rows["Part Code"].astype(str).str.strip().tolist() if not camera_rows.empty else []
-
 camera_current = "Yes" if any(
-    numeric(st.session_state.accessory_qty.get(p, 0)) > 0
-    for p in camera_parts
+    st.session_state.accessory_qty.get(part, 0) > 0
+    for part in CAMERA_PARTS
 ) else "No"
 
 camera_selection = st.radio(
@@ -1596,58 +1528,48 @@ camera_selection = st.radio(
 )
 
 if camera_selection == "Yes":
-    add_rows(camera_rows, 1)
+    for part in CAMERA_PARTS:
+        if part in optional_lookup:
+            st.session_state.accessory_qty[part] = 1
 else:
-    remove_rows(camera_rows)
+    for part in CAMERA_PARTS:
+        st.session_state.accessory_qty.pop(part, None)
 
 
 # ---------------- OTHER OPTIONAL ACCESSORIES ----------------
-st.subheader("Other Optional Accessories")
 
-# Match by Excel description so new part numbers can be added to the
-# workbook without changing this Python file.
-other_accessory_keywords = [
-    ("KEYBOARD", "Rotating Keyboard Tray"),
-    ("CABLE MANAGER", "Cable Manager"),
-    ("TOP CABLE TRAY", "Top Cable Tray"),
-    ("BRUSH PANEL", "Brush Panel"),
-]
-
-for keyword, fallback_label in other_accessory_keywords:
-    rows = excel_optional_rows(keyword)
-    if rows.empty:
+for part, display_name in OTHER_OPTIONAL_PARTS:
+    if part not in optional_lookup:
         continue
 
-    for _, r in rows.iterrows():
-        part = clean_text(r["Part Code"])
-        description = clean_text(r["Description"])
-        if not part:
-            continue
+    r = optional_lookup[part]
 
-        current_qty = int(numeric(st.session_state.accessory_qty.get(part, 0)))
+    col1, col2 = st.columns([5.5, 1.8], vertical_alignment="center")
 
-        col1, col2 = st.columns([5.5, 1.8], vertical_alignment="center")
+    with col1:
+        selected = st.checkbox(
+            display_name,
+            value=(
+                st.session_state.accessory_qty.get(part, 0) > 0
+            ),
+            key=f"other_acc_{part}",
+        )
 
-        with col1:
-            selected = st.checkbox(
-                f"{description if description else fallback_label} ({part})",
-                value=current_qty > 0,
-                key=f"other_acc_{part}",
+    with col2:
+        if selected:
+            qty = st.number_input(
+                "Quantity",
+                min_value=1,
+                max_value=999,
+                step=1,
+                value=int(
+                    st.session_state.accessory_qty.get(part, 1)
+                ),
+                key=f"other_qty_{part}",
             )
-
-        with col2:
-            if selected:
-                qty = st.number_input(
-                    "Quantity",
-                    min_value=1,
-                    max_value=999,
-                    step=1,
-                    value=current_qty if current_qty > 0 else 1,
-                    key=f"other_qty_{part}",
-                )
-                st.session_state.accessory_qty[part] = qty
-            else:
-                st.session_state.accessory_qty.pop(part, None)
+            st.session_state.accessory_qty[part] = qty
+        else:
+            st.session_state.accessory_qty.pop(part, None)
 
 
 # ============================================================
@@ -1838,6 +1760,15 @@ if not bom.empty:
         padding:15px 10px;
     }
 
+    .configuration-title-row td {
+        background:#005EB8;
+        color:white !important;
+        font-weight:700;
+        font-size:16px;
+        text-align:left !important;
+        padding:14px 12px;
+    }
+
     .section-heading td {
         background:#005EB8;
         color:white !important;
@@ -1898,6 +1829,21 @@ if not bom.empty:
         </thead>
         <tbody>
     """
+
+    # First row: selected configuration title, read directly from Excel.
+    selected_config_title = ""
+    selected_config_record_row = selected_config_record()
+    if selected_config_record_row is not None:
+        selected_config_title = clean_text(
+            selected_config_record_row.get("Configuration Title", "")
+        )
+
+    if selected_config_title:
+        html += f"""
+        <tr class="configuration-title-row">
+            <td colspan="7">{selected_config_title}</td>
+        </tr>
+        """
 
     cooling_heading_added = False
     accessories_heading_added = False
@@ -2122,6 +2068,8 @@ if not bom.empty:
         ["Freight", freight],
         ["Installation", installation],
         ["Final Selling Price", final_selling_price],
+        ["Warranty %", warranty_pct],
+        ["Warranty Amount", margin_price * warranty_pct / 100],
     ]
 
     sales_excel = excel_bytes(
@@ -2196,6 +2144,7 @@ if not bom.empty:
         )
 else:
     st.info("Select a configuration with available BOM data before downloading.")
+
 
 # ============================================================
 
