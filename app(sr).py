@@ -1471,27 +1471,95 @@ st.html("""
 </div>
 """)
 
-current_date = datetime.now().strftime("%d-%m-%Y")
+# ============================================================
+# TOP INFORMATION BAR
+# CUSTOMER NAME + USER INFORMATION
+# ============================================================
 
-st.html(f"""
-<div class="mdc-meta-card">
-    <div class="mdc-meta-grid">
-        <div class="mdc-meta-item">
-            <div class="mdc-meta-label">USER CODE</div>
-            <div class="mdc-meta-value">{st.session_state.user_code}</div>
-        </div>
-        <div class="mdc-meta-item">
-            <div class="mdc-meta-label">USER COUNT</div>
-            <div class="mdc-meta-value">{st.session_state.user_count}</div>
-        </div>
-        <div class="mdc-meta-item">
-            <div class="mdc-meta-label">DATE</div>
-            <div class="mdc-meta-value">{current_date}</div>
+top_customer_col, top_info_col = st.columns([2.2, 5.8], gap="small")
+
+# ------------------------------------------------------------
+# CUSTOMER NAME
+# ------------------------------------------------------------
+with top_customer_col:
+    customer_name = st.text_input(
+        "Customer Name",
+        value=st.session_state.customer_name,
+        key="customer_name_input",
+        placeholder="Enter customer name",
+        label_visibility="collapsed",
+    )
+
+st.session_state.customer_name = customer_name.strip()
+
+
+# ------------------------------------------------------------
+# USER CODE / COUNT / DATE
+# ------------------------------------------------------------
+with top_info_col:
+
+    current_date = datetime.now().strftime("%d-%m-%Y")
+
+    st.html(f"""
+    <div style="
+        background:#F7FBFF;
+        border:1px solid #C9DFF2;
+        border-radius:6px;
+        padding:8px 14px;
+        height:48px;
+        display:flex;
+        align-items:center;
+    ">
+        <div style="
+            display:flex;
+            width:100%;
+            justify-content:space-between;
+            align-items:center;
+            text-align:center;
+        ">
+
+            <div style="flex:1;">
+                <span style="
+                    font-size:9px;
+                    color:#64748B;
+                    font-weight:700;
+                ">USER CODE</span><br>
+                <span style="
+                    font-size:13px;
+                    font-weight:700;
+                    color:#003B71;
+                ">{st.session_state.user_code}</span>
+            </div>
+
+            <div style="flex:1;">
+                <span style="
+                    font-size:9px;
+                    color:#64748B;
+                    font-weight:700;
+                ">USER COUNT</span><br>
+                <span style="
+                    font-size:13px;
+                    font-weight:700;
+                    color:#003B71;
+                ">{st.session_state.user_count}</span>
+            </div>
+
+            <div style="flex:1;">
+                <span style="
+                    font-size:9px;
+                    color:#64748B;
+                    font-weight:700;
+                ">DATE</span><br>
+                <span style="
+                    font-size:13px;
+                    font-weight:700;
+                    color:#003B71;
+                ">{current_date}</span>
+            </div>
+
         </div>
     </div>
-</div>
-""")
-
+    """)
 
 # ============================================================
 # SIDEBAR ACCESS
@@ -1549,39 +1617,34 @@ is_internal = (
 
 
 # ============================================================
-# 1 + 2 / TOP SPLIT SCREEN
+# MAIN CONFIGURATION AREA
+# LEFT  = MDC + PDU
+# RIGHT = ACCESSORIES
 # ============================================================
-left_top = st.columns(2, gap="medium")
+
+main_left, main_right = st.columns(
+    [1.0, 1.15],
+    gap="medium"
+)
+
 
 # ============================================================
-# 1. CUSTOMER DETAILS
+# LEFT PANEL
+# 01 MDC TYPE & CONFIGURATION
+# 02 PDU SELECTION
 # ============================================================
-# with left_top:
-#     with st.container(border=True):
-#         st.markdown(
-#             '<div class="mdc-card-heading">'
-#             '<span class="mdc-number">01</span>'
-#             '<span>CUSTOMER DETAILS</span>'
-#             '</div>',
-#             unsafe_allow_html=True,
-#         )
 
-#         customer_name = st.text_input(
-#             "Customer Name",
-#             value=st.session_state.customer_name,
-#             key="customer_name_input",
-#             placeholder="Enter customer name",
-#         )
-#         st.session_state.customer_name = customer_name.strip()
+with main_left:
 
-# ============================================================
-# 2. MDC TYPE & CONFIGURATION
-# ============================================================
-with left_top:
+    # ========================================================
+    # 01. MDC TYPE & CONFIGURATION
+    # ========================================================
+
     with st.container(border=True):
+
         st.markdown(
             '<div class="mdc-card-heading">'
-            '<span class="mdc-number">02</span>'
+            '<span class="mdc-number">01</span>'
             '<span>MDC TYPE &amp; CONFIGURATION</span>'
             '</div>',
             unsafe_allow_html=True,
@@ -1591,17 +1654,23 @@ with left_top:
             "MDC Type",
             ["Single Rack", "Multirack"],
             horizontal=True,
-            index=0 if st.session_state.mdc_type == "Single Rack" else 1,
+            index=(
+                0
+                if st.session_state.mdc_type == "Single Rack"
+                else 1
+            ),
             key="mdc_type_selection",
         )
 
         if mdc_type != st.session_state.mdc_type:
+
             st.session_state.mdc_type = mdc_type
             st.session_state.configuration = "Configuration 1"
             st.session_state.accessory_qty = {}
             st.session_state.pdu_qty = {}
             st.session_state.configuration_id = generate_configuration_id()
             st.session_state.configuration_saved = False
+
             st.rerun()
 
         available = configs_df[
@@ -1613,47 +1682,56 @@ with left_top:
         configuration_display_names = {
             "Configuration 1":
                 "Configuration 1 - 1SR, 42U×800W×1200D, 3.5KW, W/O Dehumidifier",
+
             "Configuration 2":
                 "Configuration 2 - 1SR, 42U×800W×1200D, 3.5KW, Dehumidifier",
+
             "Configuration 3":
                 "Configuration 3 - 1SR, 42U×800W×1200D, 7KW, W/O Dehumidifier",
+
             "Configuration 4":
                 "Configuration 4 - 1SR, 42U×800W×1200D, 7KW, Dehumidifier",
         }
 
         if labels:
+
             st.session_state.configuration = st.selectbox(
                 "Select Configuration",
                 labels,
+
                 index=(
-                    labels.index(st.session_state.configuration)
+                    labels.index(
+                        st.session_state.configuration
+                    )
                     if st.session_state.configuration in labels
                     else 0
                 ),
-                format_func=lambda x: configuration_display_names.get(x, x),
+
+                format_func=lambda x:
+                    configuration_display_names.get(x, x),
+
                 key="configuration_selection",
             )
 
 
-# ============================================================
-# 3 + 4 / BOTTOM SPLIT SCREEN
-# ============================================================
-left_bottom, right_bottom = st.columns(2, gap="medium")
+    # ========================================================
+    # 02. PDU SELECTION
+    # ========================================================
 
-# ============================================================
-# 3. PDU SELECTION
-# ============================================================
-with left_bottom:
     with st.container(border=True):
+
         st.markdown(
             '<div class="mdc-card-heading">'
-            '<span class="mdc-number">03</span>'
+            '<span class="mdc-number">02</span>'
             '<span>PDU SELECTION</span>'
             '</div>',
             unsafe_allow_html=True,
         )
 
-        # PDU types are generated from the TYPE column in Excel.
+        # ----------------------------------------------------
+        # PDU TYPES FROM EXCEL
+        # ----------------------------------------------------
+
         pdu_type_display = {
             "BASIC": "Basic PDU",
             "METERED": "Metered PDU",
@@ -1662,51 +1740,102 @@ with left_bottom:
         }
 
         excel_pdu_types = []
+
         if not pdus_df.empty:
+
             excel_pdu_types = [
-                x for x in pdus_df["Type"].astype(str).str.strip().str.upper().unique().tolist()
+                x
+                for x in (
+                    pdus_df["Type"]
+                    .astype(str)
+                    .str.strip()
+                    .str.upper()
+                    .unique()
+                    .tolist()
+                )
                 if x
             ]
 
         pdu_types = ["None"] + [
-            pdu_type_display.get(x, f"{x.title()} PDU")
+            pdu_type_display.get(
+                x,
+                f"{x.title()} PDU"
+            )
             for x in excel_pdu_types
         ]
 
-        pdu_col1, pdu_col2 = st.columns([1.0, 1.65], gap="small")
+
+        # ----------------------------------------------------
+        # PDU TYPE + MODEL
+        # ----------------------------------------------------
+
+        pdu_col1, pdu_col2 = st.columns(
+            [1.0, 1.65],
+            gap="small"
+        )
 
         with pdu_col1:
-            previous_pdu_type = st.session_state.get("pdu_type_selection", "None")
+
+            previous_pdu_type = st.session_state.get(
+                "pdu_type_selection",
+                "None"
+            )
+
             if previous_pdu_type not in pdu_types:
                 previous_pdu_type = "None"
 
             selected_pdu_type = st.selectbox(
                 "PDU Type",
                 pdu_types,
-                index=pdu_types.index(previous_pdu_type),
+                index=pdu_types.index(
+                    previous_pdu_type
+                ),
                 key="pdu_type_selection",
             )
 
+
         with pdu_col2:
+
             if selected_pdu_type != "None":
-                reverse_type = {v: k for k, v in pdu_type_display.items()}
+
+                reverse_type = {
+                    v: k
+                    for k, v in pdu_type_display.items()
+                }
+
                 excel_pdu_type = reverse_type.get(
                     selected_pdu_type,
-                    selected_pdu_type.replace(" PDU", "").upper(),
+                    selected_pdu_type
+                    .replace(" PDU", "")
+                    .upper(),
                 )
 
                 filtered_pdus = pdus_df[
-                    pdus_df["Type"].astype(str).str.strip().str.upper() == excel_pdu_type
+                    pdus_df["Type"]
+                    .astype(str)
+                    .str.strip()
+                    .str.upper()
+                    == excel_pdu_type
                 ].copy()
 
+
                 if not filtered_pdus.empty:
+
                     pdu_options = [
-                        f'{clean_text(r["Part Code"])} — {clean_text(r["Description"])}'
+                        f'{clean_text(r["Part Code"])} — '
+                        f'{clean_text(r["Description"])}'
                         for _, r in filtered_pdus.iterrows()
                     ]
 
-                    old_selection = st.session_state.get("pdu_model_selection")
-                    pdu_index = pdu_options.index(old_selection) if old_selection in pdu_options else 0
+                    old_selection = st.session_state.get(
+                        "pdu_model_selection"
+                    )
+
+                    pdu_index = (
+                        pdu_options.index(old_selection)
+                        if old_selection in pdu_options
+                        else 0
+                    )
 
                     selected_pdu = st.selectbox(
                         "Select PDU",
@@ -1715,58 +1844,111 @@ with left_bottom:
                         key="pdu_model_selection",
                     )
 
-                    selected_row = filtered_pdus.iloc[pdu_options.index(selected_pdu)]
-                    selected_part = clean_text(selected_row["Part Code"])
+                    selected_row = filtered_pdus.iloc[
+                        pdu_options.index(selected_pdu)
+                    ]
 
-                    st.session_state.pdu_qty = {selected_part: 1}
+                    selected_part = clean_text(
+                        selected_row["Part Code"]
+                    )
+
+                    st.session_state.pdu_qty = {
+                        selected_part: 1
+                    }
+
+
+                    # ----------------------------------------
+                    # SELECTED PDU DETAILS
+                    # ----------------------------------------
 
                     st.html(f"""
                     <div class="mdc-detail-box">
-                        <div class="mdc-detail-title">SELECTED PDU</div>
+                        <div class="mdc-detail-title">
+                            SELECTED PDU
+                        </div>
+
                         <div class="mdc-detail-text">
-                            <b>{clean_text(selected_row["Part Code"])}</b><br>
-                            {clean_text(selected_row["Description"])}<br>
-                            Type: {clean_text(selected_row["Type"])}
-                            &nbsp;•&nbsp; C13: {numeric(selected_row["C13"]):g}
-                            &nbsp;•&nbsp; C19: {numeric(selected_row["C19"]):g}
+                            <b>
+                                {clean_text(selected_row["Part Code"])}
+                            </b><br>
+
+                            {clean_text(selected_row["Description"])}
+                            <br>
+
+                            Type:
+                            {clean_text(selected_row["Type"])}
+
+                            &nbsp;•&nbsp;
+
+                            C13:
+                            {numeric(selected_row["C13"]):g}
+
+                            &nbsp;•&nbsp;
+
+                            C19:
+                            {numeric(selected_row["C19"]):g}
                         </div>
                     </div>
                     """)
+
                 else:
+
                     st.session_state.pdu_qty = {}
-                    st.warning(f"No {selected_pdu_type} options found in MDC_Master_V1.xlsx.")
+
+                    st.warning(
+                        f"No {selected_pdu_type} options found "
+                        "in MDC_Master_V1.xlsx."
+                    )
+
             else:
+
                 st.session_state.pdu_qty = {}
+
                 st.html("""
                 <div class="mdc-detail-box">
-                    <div class="mdc-detail-title">PDU STATUS</div>
-                    <div class="mdc-detail-text">No PDU selected.</div>
+                    <div class="mdc-detail-title">
+                        PDU STATUS
+                    </div>
+
+                    <div class="mdc-detail-text">
+                        No PDU selected.
+                    </div>
                 </div>
                 """)
 
 
 # ============================================================
-# 4. OTHER ACCESSORIES
+# RIGHT PANEL
+# 03 OTHER ACCESSORIES
 # ============================================================
-with right_bottom:
+
+with main_right:
+
     with st.container(border=True):
+
         st.markdown(
             '<div class="mdc-card-heading">'
-            '<span class="mdc-number">04</span>'
+            '<span class="mdc-number">03</span>'
             '<span>OTHER ACCESSORIES</span>'
             '</div>',
             unsafe_allow_html=True,
         )
 
-        # Every accessory below comes from the Excel optional-items table.
+
+        # ====================================================
+        # ACCESSORY LOOKUP FROM EXCEL
+        # ====================================================
+
         optional_lookup = {
             clean_text(r["Part Code"]): r
             for _, r in accessories_df.iterrows()
             if clean_text(r["Part Code"])
         }
 
+
         def excel_optional_rows(keyword=None):
-            """Find optional items by their Excel part number/description."""
+            """Find optional items by Excel part number/description."""
+
             if accessories_df.empty:
                 return pd.DataFrame()
 
@@ -1774,138 +1956,348 @@ with right_bottom:
                 return accessories_df.copy()
 
             key = str(keyword).upper()
+
             mask = (
-                accessories_df["Part Code"].astype(str).str.upper().str.contains(key, na=False)
-                | accessories_df["Description"].astype(str).str.upper().str.contains(key, na=False)
+                accessories_df["Part Code"]
+                .astype(str)
+                .str.upper()
+                .str.contains(
+                    key,
+                    na=False
+                )
+                |
+                accessories_df["Description"]
+                .astype(str)
+                .str.upper()
+                .str.contains(
+                    key,
+                    na=False
+                )
             )
+
             return accessories_df[mask].copy()
 
+
         def remove_rows(rows):
+
             for _, r in rows.iterrows():
-                part = clean_text(r["Part Code"])
+
+                part = clean_text(
+                    r["Part Code"]
+                )
+
                 if part:
-                    st.session_state.accessory_qty.pop(part, None)
+                    st.session_state.accessory_qty.pop(
+                        part,
+                        None
+                    )
+
 
         def add_rows(rows, quantity=1):
-            for _, r in rows.iterrows():
-                part = clean_text(r["Part Code"])
-                if part:
-                    st.session_state.accessory_qty[part] = quantity
 
-        # ---------------- FIRE SUPPRESSION ----------------
-        st.markdown('<div class="mdc-mini-heading">Fire Suppression</div>', unsafe_allow_html=True)
+            for _, r in rows.iterrows():
+
+                part = clean_text(
+                    r["Part Code"]
+                )
+
+                if part:
+
+                    st.session_state.accessory_qty[
+                        part
+                    ] = quantity
+
+
+        # ====================================================
+        # FIRE SUPPRESSION
+        # ====================================================
+
+        st.markdown(
+            '<div class="mdc-mini-heading">'
+            'Fire Suppression'
+            '</div>',
+            unsafe_allow_html=True
+        )
 
         fire_rows = excel_optional_rows("FIRE")
+
         external_fire = fire_rows[
-            fire_rows["Description"].astype(str).str.upper().str.contains("EXTERNAL", na=False)
-        ].copy()
-        internal_fire = fire_rows[
-            fire_rows["Description"].astype(str).str.upper().str.contains("INTERNAL|IN-RACK", na=False)
+            fire_rows["Description"]
+            .astype(str)
+            .str.upper()
+            .str.contains(
+                "EXTERNAL",
+                na=False
+            )
         ].copy()
 
+        internal_fire = fire_rows[
+            fire_rows["Description"]
+            .astype(str)
+            .str.upper()
+            .str.contains(
+                "INTERNAL|IN-RACK",
+                na=False
+            )
+        ].copy()
+
+
         fire_current = "None"
-        if not external_fire.empty and any(
-            numeric(st.session_state.accessory_qty.get(p, 0)) > 0
-            for p in external_fire["Part Code"].astype(str).str.strip()
-        ):
-            fire_current = "External"
-        elif not internal_fire.empty and any(
-            numeric(st.session_state.accessory_qty.get(p, 0)) > 0
-            for p in internal_fire["Part Code"].astype(str).str.strip()
-        ):
-            fire_current = "Internal"
+
+        if not external_fire.empty:
+
+            if any(
+                numeric(
+                    st.session_state.accessory_qty.get(
+                        p,
+                        0
+                    )
+                ) > 0
+                for p in external_fire[
+                    "Part Code"
+                ].astype(str).str.strip()
+            ):
+                fire_current = "External"
+
+
+        elif not internal_fire.empty:
+
+            if any(
+                numeric(
+                    st.session_state.accessory_qty.get(
+                        p,
+                        0
+                    )
+                ) > 0
+                for p in internal_fire[
+                    "Part Code"
+                ].astype(str).str.strip()
+            ):
+                fire_current = "Internal"
+
 
         fire_selection = st.radio(
             "Fire Suppression",
             ["None", "External", "Internal"],
-            index=["None", "External", "Internal"].index(fire_current),
+
+            index=[
+                "None",
+                "External",
+                "Internal"
+            ].index(fire_current),
+
             horizontal=True,
+
             key="fire_suppression_selection",
         )
+
 
         remove_rows(external_fire)
         remove_rows(internal_fire)
 
+
         if fire_selection == "External":
-            add_rows(external_fire, 1)
+
+            add_rows(
+                external_fire,
+                1
+            )
+
         elif fire_selection == "Internal":
-            add_rows(internal_fire, 1)
 
-        # ---------------- CAMERA ----------------
-        st.markdown('<div class="mdc-mini-heading">Camera</div>', unsafe_allow_html=True)
+            add_rows(
+                internal_fire,
+                1
+            )
 
-        camera_rows = excel_optional_rows("CAMERA")
-        camera_parts = (
-            camera_rows["Part Code"].astype(str).str.strip().tolist()
-            if not camera_rows.empty else []
+
+        # ====================================================
+        # CAMERA
+        # ====================================================
+
+        st.markdown(
+            '<div class="mdc-mini-heading">'
+            'Camera'
+            '</div>',
+            unsafe_allow_html=True
         )
 
-        camera_current = "Yes" if any(
-            numeric(st.session_state.accessory_qty.get(p, 0)) > 0
-            for p in camera_parts
-        ) else "No"
+        camera_rows = excel_optional_rows(
+            "CAMERA"
+        )
+
+        camera_parts = (
+            camera_rows["Part Code"]
+            .astype(str)
+            .str.strip()
+            .tolist()
+            if not camera_rows.empty
+            else []
+        )
+
+
+        camera_current = (
+            "Yes"
+            if any(
+                numeric(
+                    st.session_state.accessory_qty.get(
+                        p,
+                        0
+                    )
+                ) > 0
+                for p in camera_parts
+            )
+            else "No"
+        )
+
 
         camera_selection = st.radio(
             "Camera",
             ["Yes", "No"],
-            index=["Yes", "No"].index(camera_current),
+
+            index=[
+                "Yes",
+                "No"
+            ].index(camera_current),
+
             horizontal=True,
+
             key="camera_system_selection",
         )
 
-        if camera_selection == "Yes":
-            add_rows(camera_rows, 1)
-        else:
-            remove_rows(camera_rows)
 
-        # ---------------- OTHER OPTIONAL ACCESSORIES ----------------
-        st.markdown('<div class="mdc-mini-heading">Optional Accessories</div>', unsafe_allow_html=True)
+        if camera_selection == "Yes":
+
+            add_rows(
+                camera_rows,
+                1
+            )
+
+        else:
+
+            remove_rows(
+                camera_rows
+            )
+
+
+        # ====================================================
+        # OTHER OPTIONAL ACCESSORIES
+        # ====================================================
+
+        st.markdown(
+            '<div class="mdc-mini-heading">'
+            'Optional Accessories'
+            '</div>',
+            unsafe_allow_html=True
+        )
+
 
         other_accessory_keywords = [
-            ("KEYBOARD", "Rotating Keyboard Tray"),
-            ("CABLE MANAGER", "Cable Manager"),
-            ("TOP CABLE TRAY", "Top Cable Tray"),
-            ("BRUSH PANEL", "Brush Panel"),
+            (
+                "KEYBOARD",
+                "Rotating Keyboard Tray"
+            ),
+            (
+                "CABLE MANAGER",
+                "Cable Manager"
+            ),
+            (
+                "TOP CABLE TRAY",
+                "Top Cable Tray"
+            ),
+            (
+                "BRUSH PANEL",
+                "Brush Panel"
+            ),
         ]
 
+
         for keyword, fallback_label in other_accessory_keywords:
-            rows = excel_optional_rows(keyword)
+
+            rows = excel_optional_rows(
+                keyword
+            )
+
             if rows.empty:
                 continue
 
+
             for _, r in rows.iterrows():
-                part = clean_text(r["Part Code"])
-                description = clean_text(r["Description"])
+
+                part = clean_text(
+                    r["Part Code"]
+                )
+
+                description = clean_text(
+                    r["Description"]
+                )
+
                 if not part:
                     continue
 
-                current_qty = int(numeric(st.session_state.accessory_qty.get(part, 0)))
 
-                acc_col1, acc_col2 = st.columns([4.5, 1.15], gap="small", vertical_alignment="center")
+                current_qty = int(
+                    numeric(
+                        st.session_state.accessory_qty.get(
+                            part,
+                            0
+                        )
+                    )
+                )
+
+
+                acc_col1, acc_col2 = st.columns(
+                    [4.5, 1.15],
+                    gap="small",
+                    vertical_alignment="center"
+                )
+
 
                 with acc_col1:
+
                     selected = st.checkbox(
-                        description if description else fallback_label,
+                        description
+                        if description
+                        else fallback_label,
+
                         value=current_qty > 0,
+
                         key=f"other_acc_{part}",
                     )
 
+
                 with acc_col2:
+
                     if selected:
+
                         qty = st.number_input(
                             "Qty",
+
                             min_value=1,
                             max_value=999,
                             step=1,
-                            value=current_qty if current_qty > 0 else 1,
+
+                            value=(
+                                current_qty
+                                if current_qty > 0
+                                else 1
+                            ),
+
                             key=f"other_qty_{part}",
+
                             label_visibility="collapsed",
                         )
-                        st.session_state.accessory_qty[part] = qty
+
+                        st.session_state.accessory_qty[
+                            part
+                        ] = qty
+
                     else:
-                        st.session_state.accessory_qty.pop(part, None)
 
-
+                        st.session_state.accessory_qty.pop(
+                            part,
+                            None
+                        )
 # ============================================================
 # 5. FINAL BOQ
 
