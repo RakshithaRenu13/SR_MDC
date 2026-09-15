@@ -29,6 +29,49 @@ st.set_page_config(
     layout="wide",
 )
 
+# Compact desktop UI. This block changes presentation only; it does not
+# change the configuration, BOM, pricing, download, or save logic.
+st.markdown("""
+<style>
+    .block-container {
+        padding-top: 1rem;
+        padding-bottom: 1rem;
+        padding-left: 2rem;
+        padding-right: 2rem;
+        max-width: 1500px;
+    }
+    div[data-testid="stVerticalBlock"] {
+        gap: 0.45rem;
+    }
+    div[data-testid="stHorizontalBlock"] {
+        gap: 0.8rem;
+    }
+    label, .stMarkdown p, .stCaption {
+        font-size: 12px !important;
+    }
+    div[data-testid="stTextInput"] input,
+    div[data-testid="stNumberInput"] input,
+    div[data-testid="stSelectbox"] div[data-baseweb="select"],
+    div[data-testid="stRadio"] label {
+        font-size: 13px !important;
+    }
+    div[data-testid="stTextInput"],
+    div[data-testid="stNumberInput"],
+    div[data-testid="stSelectbox"],
+    div[data-testid="stRadio"] {
+        margin-bottom: 0 !important;
+    }
+    button[kind] {
+        min-height: 34px !important;
+        font-size: 13px !important;
+    }
+    div[data-testid="stDownloadButton"] button {
+        min-height: 36px !important;
+    }
+    hr { margin: 0.5rem 0 !important; }
+</style>
+""", unsafe_allow_html=True)
+
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 MASTER_FILE = os.path.join(BASE_DIR, "MDC_Master_V1.xlsx")
 TRACKING_DB = os.path.join(BASE_DIR, "MDC_Tracking.db")
@@ -603,13 +646,14 @@ if st.session_state.user_count == 0:
 def section_header(text):
     st.html(f"""
     <div style="
-        background:linear-gradient(135deg,#005EB8,#003B71);
+        background:#003B71;
         color:white;
-        padding:10px 16px;
-        border-radius:8px;
-        margin:20px 0 15px 0;
-        font-size:18px;
+        padding:7px 12px;
+        border-radius:5px;
+        margin:10px 0 8px 0;
+        font-size:14px;
         font-weight:700;
+        letter-spacing:.2px;
     ">
         {text}
     </div>
@@ -619,12 +663,11 @@ def section_header(text):
 def price_box(label, value):
     st.markdown(
         f"""
-        <div style="padding:4px 0 12px 0; min-height:82px;">
-            <div style="font-size:16px;color:#4b5563;margin-bottom:7px;">
+        <div style="padding:2px 0 4px 0;">
+            <div style="font-size:12px;color:#475569;font-weight:600;margin-bottom:2px;">
                 {label}
             </div>
-            <div style="font-size:30px;font-weight:600;color:#30333d;
-                        white-space:nowrap;">
+            <div style="font-size:18px;font-weight:700;color:#003B71;white-space:nowrap;">
                 {money(value)}
             </div>
         </div>
@@ -1211,26 +1254,14 @@ def pdf_bytes(internal=False, bom=None, final_price=0.0):
 st.html("""
 <div style="
     background:linear-gradient(135deg,#005EB8,#003B71);
-    padding:22px 30px;
-    border-radius:10px;
-    margin-bottom:20px;
-    box-shadow:0 4px 12px rgba(0,59,113,0.18);
+    padding:12px 18px;
+    border-radius:7px;
+    margin-bottom:10px;
 ">
-    <div style="
-        color:white;
-        font-size:32px;
-        font-weight:700;
-        letter-spacing:0.3px;
-        line-height:1.2;
-    ">
+    <div style="color:white;font-size:23px;font-weight:700;line-height:1.15;">
         Eaton MDC Solution Configurator
     </div>
-
-    <div style="
-        color:#E6F2FF;
-        font-size:16px;
-        margin-top:7px;
-    ">
+    <div style="color:#E6F2FF;font-size:12px;margin-top:3px;">
         Modular Data Center Solution Configuration &amp; Pricing
     </div>
 </div>
@@ -1242,42 +1273,23 @@ current_date = datetime.now().strftime("%d-%m-%Y")
 st.html(f"""
 <div style="
     background:#F7FBFF;
-    border:1px solid #B8D8F5;
-    border-radius:8px;
-    padding:14px 18px;
-    margin-bottom:20px;
+    border:1px solid #C9DFF2;
+    border-radius:6px;
+    padding:7px 12px;
+    margin-bottom:8px;
 ">
-    <div style="
-        display:flex;
-        justify-content:space-between;
-        text-align:center;
-        gap:20px;
-    ">
+    <div style="display:flex;justify-content:space-between;gap:12px;text-align:center;">
         <div style="flex:1;">
-            <div style="font-size:13px;color:#64748B;margin-bottom:5px;">
-                USER CODE
-            </div>
-            <div style="font-size:20px;font-weight:700;color:#003B71;">
-                {st.session_state.user_code}
-            </div>
+            <span style="font-size:10px;color:#64748B;font-weight:700;">USER CODE</span><br>
+            <span style="font-size:14px;font-weight:700;color:#003B71;">{st.session_state.user_code}</span>
         </div>
-
         <div style="flex:1;">
-            <div style="font-size:13px;color:#64748B;margin-bottom:5px;">
-                USER COUNT
-            </div>
-            <div style="font-size:20px;font-weight:700;color:#003B71;">
-                {st.session_state.user_count}
-            </div>
+            <span style="font-size:10px;color:#64748B;font-weight:700;">USER COUNT</span><br>
+            <span style="font-size:14px;font-weight:700;color:#003B71;">{st.session_state.user_count}</span>
         </div>
-
         <div style="flex:1;">
-            <div style="font-size:13px;color:#64748B;margin-bottom:5px;">
-                DATE
-            </div>
-            <div style="font-size:20px;font-weight:700;color:#003B71;">
-                {current_date}
-            </div>
+            <span style="font-size:10px;color:#64748B;font-weight:700;">DATE</span><br>
+            <span style="font-size:14px;font-weight:700;color:#003B71;">{current_date}</span>
         </div>
     </div>
 </div>
@@ -1344,12 +1356,14 @@ is_internal = (
 # 1. CUSTOMER DETAILS
 # ============================================================
 
-customer_name = st.text_input(
-    "Customer Name",
-    value=st.session_state.customer_name,
-    key="customer_name_input",
-    placeholder="Enter customer name",
-)
+customer_col, _ = st.columns([2.2, 5.8])
+with customer_col:
+    customer_name = st.text_input(
+        "Customer Name",
+        value=st.session_state.customer_name,
+        key="customer_name_input",
+        placeholder="Enter customer name",
+    )
 
 st.session_state.customer_name = customer_name.strip()
 
@@ -1360,12 +1374,14 @@ st.session_state.customer_name = customer_name.strip()
 
 section_header("2. MDC TYPE & CONFIGURATION")
 
-mdc_type = st.radio(
-    "MDC Type",
-    ["Single Rack", "Multirack"],
-    horizontal=True,
-    index=0 if st.session_state.mdc_type == "Single Rack" else 1,
-)
+type_col, config_col = st.columns([1.7, 6.3], vertical_alignment="bottom")
+with type_col:
+    mdc_type = st.radio(
+        "MDC Type",
+        ["Single Rack", "Multirack"],
+        horizontal=True,
+        index=0 if st.session_state.mdc_type == "Single Rack" else 1,
+    )
 
 if mdc_type != st.session_state.mdc_type:
     st.session_state.mdc_type = mdc_type
@@ -1394,16 +1410,17 @@ configuration_display_names = {
 }
 
 if labels:
-    st.session_state.configuration = st.selectbox(
-        "Select Configuration",
-        labels,
-        index=(
-            labels.index(st.session_state.configuration)
-            if st.session_state.configuration in labels
-            else 0
-        ),
-        format_func=lambda x: configuration_display_names.get(x, x),
-    )
+    with config_col:
+        st.session_state.configuration = st.selectbox(
+            "Select Configuration",
+            labels,
+            index=(
+                labels.index(st.session_state.configuration)
+                if st.session_state.configuration in labels
+                else 0
+            ),
+            format_func=lambda x: configuration_display_names.get(x, x),
+        )
 
 
 # ============================================================
@@ -1479,12 +1496,6 @@ with col2:
 
             st.session_state.pdu_qty = {selected_part: 1}
 
-            st.caption(
-                f'Type: {clean_text(selected_row["Type"])} | '
-                f'C13: {numeric(selected_row["C13"]):g} | '
-                f'C19: {numeric(selected_row["C19"]):g} | '
-                f'Excel Unit Price: {money(selected_row["Unit Cost"])}'
-            )
         else:
             st.session_state.pdu_qty = {}
             st.warning(f"No {selected_pdu_type} options found in MDC_Master_V1.xlsx.")
@@ -1537,7 +1548,7 @@ def add_rows(rows, quantity=1):
 
 
 # ---------------- FIRE SUPPRESSION ----------------
-st.subheader("4.1 Fire Suppression")
+st.markdown("**4.1 Fire Suppression**")
 
 fire_rows = excel_optional_rows("FIRE")
 external_fire = fire_rows[
@@ -1577,7 +1588,7 @@ elif fire_selection == "Internal":
 
 
 # ---------------- CAMERA ----------------
-st.subheader("4.2 Camera")
+st.markdown("**4.2 Camera**")
 
 camera_rows = excel_optional_rows("CAMERA")
 camera_parts = camera_rows["Part Code"].astype(str).str.strip().tolist() if not camera_rows.empty else []
@@ -1602,7 +1613,7 @@ else:
 
 
 # ---------------- OTHER OPTIONAL ACCESSORIES ----------------
-st.subheader("Other Optional Accessories")
+st.markdown("**Other Optional Accessories**")
 
 # Match by Excel description so new part numbers can be added to the
 # workbook without changing this Python file.
@@ -1638,7 +1649,7 @@ for keyword, fallback_label in other_accessory_keywords:
         with col2:
             if selected:
                 qty = st.number_input(
-                    "Quantity",
+                    "Qty",
                     min_value=1,
                     max_value=999,
                     step=1,
@@ -1682,32 +1693,14 @@ else:
 
 st.html(f"""
 <div style="
-    display:flex;
-    justify-content:space-between;
-    align-items:center;
-    gap:20px;
-    background:linear-gradient(135deg,#005EB8,#003B71);
-    color:white;
-    padding:10px 16px;
-    border-radius:8px;
-    margin:20px 0 15px 0;
+    display:flex;justify-content:space-between;align-items:center;gap:15px;
+    background:#003B71;color:white;padding:7px 12px;border-radius:5px;
+    margin:10px 0 8px 0;
 ">
-    <div style="font-size:18px;font-weight:700;">
-        5. FINAL BOQ
-    </div>
-
-    <div style="
-        display:flex;
-        align-items:center;
-        gap:10px;
-        white-space:nowrap;
-    ">
-        <span style="font-size:13px;font-weight:500;">
-            FINAL SELLING PRICE
-        </span>
-        <span style="font-size:20px;font-weight:700;">
-            {money(final_selling_price)}
-        </span>
+    <div style="font-size:14px;font-weight:700;">5. FINAL BOQ</div>
+    <div style="display:flex;align-items:center;gap:8px;white-space:nowrap;">
+        <span style="font-size:11px;font-weight:700;">FINAL SELLING PRICE</span>
+        <span style="font-size:16px;font-weight:700;">{money(final_selling_price)}</span>
     </div>
 </div>
 """)
@@ -1808,7 +1801,7 @@ if not bom.empty:
         border-collapse:collapse;
         table-layout:fixed;
         font-family:Arial,sans-serif;
-        font-size:14px;
+        font-size:12px;
         border:1px solid #D9E1E8;
     }
 
@@ -1817,12 +1810,12 @@ if not bom.empty:
         color:#555;
         font-weight:600;
         text-align:left;
-        padding:12px 10px;
+        padding:7px 7px;
         border-bottom:1px solid #D9E1E8;
     }
 
     .final-structure-table td {
-        padding:11px 10px;
+        padding:6px 7px;
         border-bottom:1px solid #E5E7EB;
         color:#333;
         vertical-align:middle;
@@ -1833,18 +1826,18 @@ if not bom.empty:
         background:#003B71;
         color:white !important;
         font-weight:700;
-        font-size:16px;
+        font-size:13px;
         text-align:center !important;
-        padding:15px 10px;
+        padding:8px 7px;
     }
 
     .section-heading td {
         background:#005EB8;
         color:white !important;
         font-weight:700;
-        font-size:15px;
+        font-size:12px;
         text-align:center !important;
-        padding:12px 14px;
+        padding:7px 8px;
     }
 
     .serial {
@@ -1987,7 +1980,7 @@ if not bom.empty:
             <td colspan="6" style="
                 text-align:right;
                 font-weight:700;
-                padding:13px 10px;
+                padding:8px 7px;
                 background:#F7FBFF;
                 color:#003B71;
             ">
@@ -2008,11 +2001,6 @@ if not bom.empty:
 
     st.html(html)
 
-    st.caption(
-        "Unit Price = price read directly from MDC_Master_V1.xlsx. "
-        "Total Price = Excel Unit Price × Quantity. "
-        "Final Selling Price is calculated separately."
-    )
 else:
     st.info("No components selected for the current configuration.")
 
@@ -2022,7 +2010,7 @@ else:
 # ============================================================
 
 if is_internal:
-    st.header("6. Cost Summary — Internal Only")
+    section_header("6. COST SUMMARY — INTERNAL ONLY")
 
     a, b, c, d = st.columns(4)
 
@@ -2038,7 +2026,7 @@ if is_internal:
     with d:
         price_box("Total Cost", total_cost)
 
-    st.header("7. Cost to Selling Price — Internal Only")
+    section_header("7. COST TO SELLING PRICE — INTERNAL ONLY")
 
     p1, p2, p3, p4 = st.columns(4)
 
@@ -2109,7 +2097,7 @@ if is_internal:
 # 8. DOWNLOADS — EXCEL + PDF
 # ============================================================
 
-st.header("8. Downloads")
+section_header("8. DOWNLOADS")
 
 if not bom.empty:
     internal_cost_data = [
@@ -2148,7 +2136,7 @@ if not bom.empty:
             final_price=final_selling_price,
         )
 
-        st.subheader("Internal – MDC")
+        st.markdown("**Internal – MDC**")
         i1, i2 = st.columns(2)
 
         with i1:
@@ -2171,7 +2159,7 @@ if not bom.empty:
                 on_click=handle_excel_download,
             )
 
-        st.subheader("Sales")
+        st.markdown("**Sales**")
 
     s1, s2 = st.columns(2)
 
@@ -2202,11 +2190,7 @@ else:
 # 9. SAVE CONFIGURATION
 # ============================================================
 
-st.header("9. Save Configuration")
-
-st.caption(
-    "Save the current MDC configuration for future tracking and reference."
-)
+section_header("9. SAVE CONFIGURATION")
 
 save_col1, save_col2 = st.columns([2, 5])
 
@@ -2259,7 +2243,7 @@ with save_col1:
 # ============================================================
 
 if is_internal:
-    st.header("10. Configuration History")
+    section_header("10. CONFIGURATION HISTORY")
 
     conn = sqlite3.connect(TRACKING_DB)
 
@@ -2282,6 +2266,7 @@ if is_internal:
             history_df,
             use_container_width=True,
             hide_index=True,
+            height=220,
         )
     else:
         st.info("No saved configurations available yet.")
@@ -2292,9 +2277,4 @@ if is_internal:
 # ============================================================
 
 st.divider()
-
-st.caption(
-    "Eaton MDC Solution Configurator | "
-    "Single Rack configurations use the supplied one-sheet "
-    "MDC_Master_V1.xlsx | Multirack configurations are XXX placeholders."
-)
+st.caption("Eaton MDC Solution Configurator")
