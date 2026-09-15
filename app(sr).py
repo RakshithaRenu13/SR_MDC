@@ -29,49 +29,6 @@ st.set_page_config(
     layout="wide",
 )
 
-# Compact desktop UI. This block changes presentation only; it does not
-# change the configuration, BOM, pricing, download, or save logic.
-st.markdown("""
-<style>
-    .block-container {
-        padding-top: 1rem;
-        padding-bottom: 1rem;
-        padding-left: 2rem;
-        padding-right: 2rem;
-        max-width: 1500px;
-    }
-    div[data-testid="stVerticalBlock"] {
-        gap: 0.45rem;
-    }
-    div[data-testid="stHorizontalBlock"] {
-        gap: 0.8rem;
-    }
-    label, .stMarkdown p, .stCaption {
-        font-size: 12px !important;
-    }
-    div[data-testid="stTextInput"] input,
-    div[data-testid="stNumberInput"] input,
-    div[data-testid="stSelectbox"] div[data-baseweb="select"],
-    div[data-testid="stRadio"] label {
-        font-size: 13px !important;
-    }
-    div[data-testid="stTextInput"],
-    div[data-testid="stNumberInput"],
-    div[data-testid="stSelectbox"],
-    div[data-testid="stRadio"] {
-        margin-bottom: 0 !important;
-    }
-    button[kind] {
-        min-height: 34px !important;
-        font-size: 13px !important;
-    }
-    div[data-testid="stDownloadButton"] button {
-        min-height: 36px !important;
-    }
-    hr { margin: 0.5rem 0 !important; }
-</style>
-""", unsafe_allow_html=True)
-
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 MASTER_FILE = os.path.join(BASE_DIR, "MDC_Master_V1.xlsx")
 TRACKING_DB = os.path.join(BASE_DIR, "MDC_Tracking.db")
@@ -337,17 +294,16 @@ init_tracking_db()
 
 # ============================================================
 # LOAD THE ONE-SHEET EXCEL MASTER
-# EVERYTHING USED BY THE UI IS READ FROM MDC_Master_V1.xlsx
 # ============================================================
 
 @st.cache_data
-
 def load_master():
     if not os.path.exists(MASTER_FILE):
         raise FileNotFoundError(
             f"MDC_Master_V1.xlsx was not found in: {BASE_DIR}"
         )
 
+    # Read exactly as laid out in the supplied one-sheet workbook.
     sheet = pd.read_excel(
         MASTER_FILE,
         sheet_name=0,
@@ -355,44 +311,61 @@ def load_master():
         engine="openpyxl",
     )
 
-    def get(row, col):
-        if col >= len(row):
-            return ""
-        return clean_text(row.iloc[col])
-
-    def is_part_header(value):
-        return get(pd.Series([value]), 0).upper() in {
-            "PART NUMBER", "PART NO", "PART CODE"
-        }
-
     # --------------------------------------------------------
-    # SINGLE-RACK CONFIGURATIONS
-    # Excel layout:
-    #   Solution 1 -> rows 1-25, A:E
-    #   Solution 3 -> rows 1-25, F:J
-    #   Solution 2 -> rows 26-50, A:E
-    #   Solution 4 -> rows 26-50, F:J
+    # Configuration blocks
+    #
+    # Solution 1: Excel rows 1-24, columns A-E
+    # Solution 3: Excel rows 1-24, columns F-J
+    # Solution 2: Excel rows 26-49, columns A-E
+    # Solution 4: Excel rows 26-49, columns F-J
+    #
+    # Python indexes are zero-based.
     # --------------------------------------------------------
+
     block_info = {
         "Configuration 1": {
-            "start": 0, "end": 25,
-            "part": 0, "desc": 1, "qty": 2,
-            "uom": 3, "price": 4,
+            "mdc_type": "Single Rack",
+            "title": "3.5kW Cooling W/o Dehumidifier",
+            "start": 0,
+            "end": 24,
+            "part_col": 0,
+            "desc_col": 1,
+            "qty_col": 2,
+            "uom_col": 3,
+            "price_col": 4,
         },
         "Configuration 3": {
-            "start": 0, "end": 25,
-            "part": 5, "desc": 6, "qty": 7,
-            "uom": 8, "price": 9,
+            "mdc_type": "Single Rack",
+            "title": "7kW Cooling W/o Dehumidifier",
+            "start": 0,
+            "end": 24,
+            "part_col": 5,
+            "desc_col": 6,
+            "qty_col": 7,
+            "uom_col": 8,
+            "price_col": 9,
         },
         "Configuration 2": {
-            "start": 25, "end": 50,
-            "part": 0, "desc": 1, "qty": 2,
-            "uom": 3, "price": 4,
+            "mdc_type": "Single Rack",
+            "title": "3.5kW Cooling With Dehumidifier",
+            "start": 25,
+            "end": 49,
+            "part_col": 0,
+            "desc_col": 1,
+            "qty_col": 2,
+            "uom_col": 3,
+            "price_col": 4,
         },
         "Configuration 4": {
-            "start": 25, "end": 50,
-            "part": 5, "desc": 6, "qty": 7,
-            "uom": 8, "price": 9,
+            "mdc_type": "Single Rack",
+            "title": "7kW Cooling With Dehumidifier",
+            "start": 25,
+            "end": 49,
+            "part_col": 5,
+            "desc_col": 6,
+            "qty_col": 7,
+            "uom_col": 8,
+            "price_col": 9,
         },
     }
 
@@ -400,56 +373,53 @@ def load_master():
     component_rows = []
 
     for config_name, info in block_info.items():
-        block = sheet.iloc[info["start"]:info["end"]]
+        block = sheet.iloc[info["start"]:info["end"]].copy()
 
-        # Read the actual solution title from Excel.
-        solution_title = get(block.iloc[0], 0)
-        if not solution_title:
-            solution_title = config_name
+        # Read the configuration title directly from the first Excel row.
+        # Keep the existing BOM parsing unchanged.
+        first_row = block.iloc[0]
+        info["excel_title"] = " ".join(
+            clean_text(first_row.iloc[info["desc_col"]]).split()
+        ).strip()
 
-        # Remove Excel line breaks for cleaner UI text.
-        solution_title = " ".join(solution_title.split())
-        solution_title = solution_title.replace("SOLUTION 1", "").replace("SOLUTION 2", "")
-        solution_title = solution_title.replace("SOLUTION 3", "").replace("SOLUTION 4", "")
-        solution_title = " ".join(solution_title.split()).strip(" -")
+        for excel_row, (_, row) in enumerate(block.iterrows(), start=info["start"] + 1):
+            part = clean_text(row.iloc[info["part_col"]])
+            desc = clean_text(row.iloc[info["desc_col"]])
+            qty = numeric(row.iloc[info["qty_col"]])
+            uom = clean_text(row.iloc[info["uom_col"]])
+            price = numeric(row.iloc[info["price_col"]])
 
-        for local_index, (_, row) in enumerate(block.iterrows()):
-            # First row = solution title
-            # Second row = column headings
-            if local_index in (0, 1):
+            if excel_row == info["start"] + 1:
+                # Solution title row; the actual CTO description is on the next row.
                 continue
 
-            part = get(row, info["part"])
-            desc = get(row, info["desc"])
-            qty = numeric(row.iloc[info["qty"]])
-            uom = get(row, info["uom"])
-            price = numeric(row.iloc[info["price"]])
-
-            if not part and not desc:
+            if not desc and not part:
                 continue
 
-            if part.upper() in {"PART NUMBER", "PART NO", "PART CODE"}:
+            # Skip repeated column header rows.
+            if part.upper() == "PART NUMBER":
                 continue
 
-            # CTO is the configuration heading, not a priced BOQ line.
-            if part.upper() == "CTO3M002":
+            # The CTO row has no numeric price and is used as the visible
+            # configuration heading in the final BOQ.
+            if part == "CTO3M002":
                 continue
 
             component_rows.append({
-                "MDC Type": "Single Rack",
+                "MDC Type": info["mdc_type"],
                 "Configuration": config_name,
-                "Configuration Title": solution_title,
+                "Configuration Title": info.get("excel_title", info.get("title", "")),
                 "Part Code": part,
                 "Description": desc,
-                "Quantity": 0.0 if pd.isna(qty) else float(qty),
-                "UOM": uom if uom else "EA",
+                "Quantity": 0 if pd.isna(qty) else float(qty),
+                "UOM": uom,
                 "Unit Cost": price,
             })
 
-        cfg_components = pd.DataFrame([
-            r for r in component_rows
-            if r["Configuration"] == config_name
-        ])
+        # Base cost is calculated directly from the numeric Excel prices.
+        cfg_components = pd.DataFrame(
+            [r for r in component_rows if r["Configuration"] == config_name]
+        )
 
         if cfg_components.empty:
             base_cost = 0.0
@@ -465,9 +435,9 @@ def load_master():
             )
 
         config_rows.append({
-            "MDC Type": "Single Rack",
+            "MDC Type": info["mdc_type"],
             "Configuration": config_name,
-            "Configuration Title": solution_title,
+            "Configuration Title": info.get("excel_title", info.get("title", "")),
             "Base Cost": base_cost,
         })
 
@@ -475,7 +445,7 @@ def load_master():
     components = pd.DataFrame(component_rows)
 
     # --------------------------------------------------------
-    # MULTIRACK PLACEHOLDERS
+    # Multirack placeholders
     # --------------------------------------------------------
     for n in range(1, 10):
         configs = pd.concat([
@@ -489,99 +459,80 @@ def load_master():
         ], ignore_index=True)
 
     # --------------------------------------------------------
-    # OTHER OPTIONAL ITEMS
-    # Locate the section by its Excel heading instead of using
-    # hardcoded row numbers.
+    # Other optional items
+    # Excel rows 52-61 -> Python rows 51-60
+    # Columns A-E
     # --------------------------------------------------------
     accessories = []
-    optional_start = None
-    optional_end = None
 
-    for i in range(len(sheet)):
-        text = " ".join(get(sheet.iloc[i], 0).split()).upper()
-        if "OTHER OPTIONAL ITEMS" in text:
-            optional_start = i + 1
-            continue
-        if optional_start is not None and "SINGLE PHASE PDU" in text:
-            optional_end = i
-            break
+    for _, row in sheet.iloc[51:61].iterrows():
+        part = clean_text(row.iloc[0])
+        desc = clean_text(row.iloc[1])
+        qty = numeric(row.iloc[2])
+        uom = clean_text(row.iloc[3])
+        price = numeric(row.iloc[4])
 
-    if optional_start is not None:
-        if optional_end is None:
-            optional_end = len(sheet)
-
-        for _, row in sheet.iloc[optional_start:optional_end].iterrows():
-            part = get(row, 0)
-            desc = get(row, 1)
-            qty = numeric(row.iloc[2])
-            uom = get(row, 3)
-            price = numeric(row.iloc[4])
-
-            if not part or not desc:
-                continue
-
-            if part.upper() in {"PART NUMBER", "PART NO", "PART CODE"}:
-                continue
-
+        if part and desc:
             accessories.append({
                 "Part Code": part,
                 "Description": desc,
-                "Default Quantity": 1.0 if pd.isna(qty) or qty <= 0 else float(qty),
-                "UOM": uom if uom else "EA",
+                "Default Quantity": 1 if pd.isna(qty) else float(qty),
+                "UOM": uom,
                 "Unit Cost": price,
             })
 
     accessories = pd.DataFrame(accessories)
 
     # --------------------------------------------------------
-    # SINGLE PHASE PDU'S
-    # Locate section dynamically and carry merged TYPE values.
+    # PDU section
+    # Excel rows 64 onward -> Python row 63 onward
+    #
+    # Columns:
+    # A = Part Number
+    # B = Description
+    # C = C13
+    # D = C19
+    # E = TYPE
+    # F = Unit Cost
     # --------------------------------------------------------
     pdus = []
-    pdu_start = None
 
-    for i in range(len(sheet)):
-        text = " ".join(get(sheet.iloc[i], 0).split()).upper()
-        if "SINGLE PHASE PDU" in text:
-            pdu_start = i + 1
-            break
+    for _, row in sheet.iloc[63:].iterrows():
+        part = clean_text(row.iloc[0])
+        desc = clean_text(row.iloc[1])
 
-    current_pdu_type = ""
+        if not part or not desc:
+            continue
 
-    if pdu_start is not None:
-        for _, row in sheet.iloc[pdu_start:].iterrows():
-            part = get(row, 0)
-            desc = get(row, 1)
+        if part.upper() == "PART NUMBER":
+            continue
 
-            if not part and not desc:
-                continue
+        c13 = numeric(row.iloc[2])
+        c19 = numeric(row.iloc[3])
+        pdu_type = clean_text(row.iloc[4])
 
-            if part.upper() in {"PART NUMBER", "PART NO", "PART CODE"}:
-                continue
+        # The Excel uses merged cells for the PDU type.
+        # Carry the last non-empty type downward.
+        if pdu_type:
+            current_pdu_type = pdu_type
+        else:
+            pdu_type = current_pdu_type if "current_pdu_type" in locals() else ""
 
-            c13 = numeric(row.iloc[2])
-            c19 = numeric(row.iloc[3])
-            excel_type = get(row, 4)
-            price = numeric(row.iloc[5])
+        price = numeric(row.iloc[5])
 
-            if excel_type:
-                current_pdu_type = excel_type.upper()
-
-            if not part or not desc or not current_pdu_type:
-                continue
-
-            pdus.append({
-                "Part Code": part,
-                "Description": desc,
-                "C13": 0.0 if pd.isna(c13) else float(c13),
-                "C19": 0.0 if pd.isna(c19) else float(c19),
-                "Type": current_pdu_type,
-                "UOM": "EA",
-                "Unit Cost": price,
-            })
+        pdus.append({
+            "Part Code": part,
+            "Description": desc,
+            "C13": 0 if pd.isna(c13) else float(c13),
+            "C19": 0 if pd.isna(c19) else float(c19),
+            "Type": pdu_type.upper(),
+            "UOM": "EA",
+            "Unit Cost": price,
+        })
 
     pdus = pd.DataFrame(pdus)
 
+    # Normalize all text columns.
     for df in (configs, components, accessories, pdus):
         for col in df.columns:
             if df[col].dtype == object:
@@ -646,14 +597,13 @@ if st.session_state.user_count == 0:
 def section_header(text):
     st.html(f"""
     <div style="
-        background:#003B71;
+        background:linear-gradient(135deg,#005EB8,#003B71);
         color:white;
-        padding:7px 12px;
-        border-radius:5px;
-        margin:10px 0 8px 0;
-        font-size:14px;
+        padding:10px 16px;
+        border-radius:8px;
+        margin:20px 0 15px 0;
+        font-size:18px;
         font-weight:700;
-        letter-spacing:.2px;
     ">
         {text}
     </div>
@@ -663,11 +613,12 @@ def section_header(text):
 def price_box(label, value):
     st.markdown(
         f"""
-        <div style="padding:2px 0 4px 0;">
-            <div style="font-size:12px;color:#475569;font-weight:600;margin-bottom:2px;">
+        <div style="padding:4px 0 12px 0; min-height:82px;">
+            <div style="font-size:16px;color:#4b5563;margin-bottom:7px;">
                 {label}
             </div>
-            <div style="font-size:18px;font-weight:700;color:#003B71;white-space:nowrap;">
+            <div style="font-size:30px;font-weight:600;color:#30333d;
+                        white-space:nowrap;">
                 {money(value)}
             </div>
         </div>
@@ -681,7 +632,6 @@ def price_box(label, value):
 # ============================================================
 
 def generate_user_code():
-    """Generate the user code entirely from the current Excel-driven selections."""
     codes = []
 
     config_text = clean_text(st.session_state.configuration)
@@ -689,75 +639,54 @@ def generate_user_code():
         number = config_text.split()[-1]
         codes.append(f"C{number}")
 
-    # Fire suppression is detected from Excel descriptions.
-    fire_selected = []
-    for part, qty in st.session_state.accessory_qty.items():
-        if numeric(qty) <= 0:
-            continue
-        match = accessories_df[
-            accessories_df["Part Code"].astype(str).str.strip() == str(part).strip()
-        ]
-        if not match.empty:
-            desc = clean_text(match.iloc[0]["Description"]).upper()
-            if "FIRE" in desc:
-                fire_selected.append(desc)
+    fire_code = None
 
-    if any("EXTERNAL" in x for x in fire_selected):
-        codes.append("F-EXT")
-    elif any("INTERNAL" in x or "IN-RACK" in x for x in fire_selected):
-        codes.append("F-INT")
+    for part in ("801073203", "HRD-XH1C"):
+        if st.session_state.accessory_qty.get(part, 0) > 0:
+            row = accessories_df[
+                accessories_df["Part Code"].astype(str).str.strip() == part
+            ]
+            if not row.empty:
+                desc = clean_text(row.iloc[0]["Description"]).upper()
+                if "EXTERNAL" in desc:
+                    fire_code = "F-EXT"
+                elif "INTERNAL" in desc or "RACK MNT" in desc:
+                    fire_code = "F-INT"
 
-    # Camera is detected from Excel descriptions, not hardcoded part numbers.
-    camera_selected = False
-    for part, qty in st.session_state.accessory_qty.items():
-        if numeric(qty) <= 0:
-            continue
-        match = accessories_df[
-            accessories_df["Part Code"].astype(str).str.strip() == str(part).strip()
-        ]
-        if not match.empty and "CAMERA" in clean_text(match.iloc[0]["Description"]).upper():
-            camera_selected = True
-            break
+    if fire_code:
+        codes.append(fire_code)
 
-    if camera_selected:
+    if any(
+        numeric(st.session_state.accessory_qty.get(part, 0)) > 0
+        for part in CAMERA_PARTS
+    ):
         codes.append("CAM")
 
-    # Other accessory codes are detected by their Excel descriptions.
-    accessory_code_map = [
-        ("KEYBOARD", "KT"),
-        ("CABLE MANAGER", "CM"),
-        ("TOP CABLE TRAY", "TCT"),
-        ("BRUSH PANEL", "BP"),
-    ]
+    accessory_code_map = {
+        "801223664": "KT",
+        "801075237": "CM",
+        "801029022": "TCT",
+        "801075235": "BP",
+    }
 
-    for keyword, code in accessory_code_map:
-        selected = False
-        for part, qty in st.session_state.accessory_qty.items():
-            if numeric(qty) <= 0:
-                continue
-            match = accessories_df[
-                accessories_df["Part Code"].astype(str).str.strip() == str(part).strip()
-            ]
-            if not match.empty and keyword in clean_text(match.iloc[0]["Description"]).upper():
-                selected = True
-                break
-        if selected:
+    for part, code in accessory_code_map.items():
+        if st.session_state.accessory_qty.get(part, 0) > 0:
             codes.append(code)
 
-    # PDU code is obtained from Excel TYPE.
     for part, qty in st.session_state.pdu_qty.items():
-        if numeric(qty) <= 0:
+        if qty <= 0:
             continue
+
         pdu_row = pdus_df[
             pdus_df["Part Code"].astype(str).str.strip() == str(part).strip()
         ]
+
         if not pdu_row.empty:
             pdu_type = clean_text(pdu_row.iloc[0]["Type"]).upper()
             pdu_map = {
                 "BASIC": "B-PDU",
                 "METERED": "M-PDU",
                 "SWITCHED": "S-PDU",
-                "MANAGED": "MG-PDU",
             }
             if pdu_type in pdu_map:
                 codes.append(pdu_map[pdu_type])
@@ -789,33 +718,21 @@ def selected_components():
         & (components_df["Configuration"] == st.session_state.configuration)
     ].copy()
 
-    # ------------------------------------------------------------
-    # FIX DUPLICATE MAIN MDC PART NUMBER
-    # ------------------------------------------------------------
-    # 801029209 is the main MDC part.
-    # In Config 2/4, the Excel master also contains 801029209
-    # on the FRAME row, which incorrectly duplicates its price.
-    #
-    # Keep 801029209 only on the actual MDC row.
-    # The FRAME row remains in the BOQ but without Part Code/Price.
-    # ------------------------------------------------------------
-
-    main_mdc_part = "801029209"
-    main_mdc_found = False
-
-    for idx in df.index:
-        part = clean_text(df.at[idx, "Part Code"])
-
-        if part == main_mdc_part:
-            if not main_mdc_found:
-                # Keep the first/main MDC occurrence
-                main_mdc_found = True
-            else:
-                # Remove duplicate part number and price
-                df.at[idx, "Part Code"] = ""
-                df.at[idx, "Unit Cost"] = float("nan")
+    # The master sheet can contain 801029209 twice for Config 2/4.
+    # Keep the first/main MDC occurrence so its price is counted once.
+    if not df.empty and "Part Code" in df.columns:
+        seen_main_mdc = False
+        for idx in df.index:
+            if clean_text(df.at[idx, "Part Code"]) == "801029209":
+                if seen_main_mdc:
+                    df.at[idx, "Part Code"] = ""
+                    if "Unit Cost" in df.columns:
+                        df.at[idx, "Unit Cost"] = float("nan")
+                else:
+                    seen_main_mdc = True
 
     return df
+
 
 # ============================================================
 # BOM
@@ -841,9 +758,37 @@ def build_bom():
             "Source": "Configuration",
         })
 
-    # Optional accessories
+    # --------------------------------------------------------
+    # CAMERA: use every CAMERA component from Excel for cost,
+    # but display only ONE common Camera System line in BOQ.
+    # --------------------------------------------------------
+    camera_parts_set = {str(x).strip() for x in CAMERA_PARTS}
+    camera_total_qty = 0
+    camera_unit_cost = 0.0
+    camera_selected = False
+
     for _, r in accessories_df.iterrows():
         part = clean_text(r["Part Code"])
+        if part not in camera_parts_set:
+            continue
+
+        qty = numeric(st.session_state.accessory_qty.get(part, 0))
+        if pd.notna(qty) and qty > 0:
+            camera_selected = True
+            camera_total_qty = max(camera_total_qty, int(qty))
+            cost = numeric(r["Unit Cost"])
+            if pd.notna(cost):
+                camera_unit_cost += float(cost)
+
+    # --------------------------------------------------------
+    # Other optional accessories (excluding individual Camera
+    # parts, because Camera is represented as one common line).
+    # --------------------------------------------------------
+    for _, r in accessories_df.iterrows():
+        part = clean_text(r["Part Code"])
+        if part in camera_parts_set:
+            continue
+
         qty = numeric(st.session_state.accessory_qty.get(part, 0))
 
         if pd.notna(qty) and qty > 0:
@@ -860,6 +805,21 @@ def build_bom():
                 "Total Cost": cost * qty if pd.notna(cost) else float("nan"),
                 "Source": "Optional Accessory",
             })
+
+    # One customer-facing Camera line. All Excel camera components
+    # are included in its combined cost.
+    if camera_selected:
+        rows.append({
+            "S.No.": len(rows) + 1,
+            "Component Type": "Optional Accessory",
+            "Part Code": "",
+            "Description": "Camera System",
+            "Quantity": float(camera_total_qty),
+            "UOM": "SET",
+            "Unit Cost": float(camera_unit_cost),
+            "Total Cost": float(camera_unit_cost * camera_total_qty),
+            "Source": "Optional Accessory",
+        })
 
     # Selected PDU
     for _, r in pdus_df.iterrows():
@@ -889,7 +849,6 @@ def build_bom():
             })
 
     return pd.DataFrame(rows)
-
 
 def cost_summary(bom):
     if bom.empty:
@@ -980,217 +939,79 @@ def customer_table():
     ], columns=["Field", "Value"])
 
 
-# ============================================================
-# EXCEL EXPORT
-# ============================================================
-
-def excel_bytes(
-    internal=False,
-    bom=None,
-    final_price=0.0,
-    cost_data=None
-):
-    """
-    Create ONE Excel worksheet containing:
-    - Customer details
-    - Final BOQ
-    - Price summary
-    - Final Selling Price
-
-    Component Type is intentionally NOT shown.
-    """
-
+def excel_bytes(internal=False, bom=None, final_price=0.0, cost_data=None):
+    """Create ONE Excel worksheet containing customer details + BOQ + totals."""
     output = BytesIO()
 
     if bom is None:
         bom = build_bom()
 
-    # --------------------------------------------------------
-    # GET FINAL PRICE SAFELY
-    # --------------------------------------------------------
-
-    try:
-        final_price = float(numeric(final_price))
-    except Exception:
-        final_price = 0.0
-
-    # --------------------------------------------------------
-    # EXCEL WRITER
-    # --------------------------------------------------------
-
-    with pd.ExcelWriter(
-        output,
-        engine="openpyxl"
-    ) as writer:
-
+    with pd.ExcelWriter(output, engine="openpyxl") as writer:
         wb = writer.book
-
-        # Create worksheet
         ws = wb.create_sheet("MDC BOQ")
         writer.sheets["MDC BOQ"] = ws
 
-        # ====================================================
-        # CUSTOMER / CONFIGURATION DETAILS
-        # ====================================================
-
+        # ---------------- CUSTOMER / CONFIGURATION ----------------
         info = customer_table()
-
-        ws.cell(
-            row=1,
-            column=1,
-            value="EATON MDC SOLUTION CONFIGURATOR"
-        )
-
-        ws.cell(
-            row=2,
-            column=1,
-            value="Customer & Configuration Details"
-        )
+        ws.cell(row=1, column=1, value="EATON MDC SOLUTION CONFIGURATOR")
+        ws.cell(row=2, column=1, value="Customer & Configuration Details")
 
         row_no = 4
-
         for _, r in info.iterrows():
-
-            ws.cell(
-                row=row_no,
-                column=1,
-                value=r["Field"]
-            )
-
-            ws.cell(
-                row=row_no,
-                column=2,
-                value=r["Value"]
-            )
-
+            ws.cell(row=row_no, column=1, value=r["Field"])
+            ws.cell(row=row_no, column=2, value=r["Value"])
             row_no += 1
 
-        # ====================================================
-        # FINAL BOQ
-        # ====================================================
-
         row_no += 1
-
-        ws.cell(
-            row=row_no,
-            column=1,
-            value="FINAL BOQ"
-        )
-
+        ws.cell(row=row_no, column=1, value="FINAL BOQ")
         row_no += 1
-
-        # ----------------------------------------------------
-        # HEADERS
-        # Component Type intentionally removed
-        # ----------------------------------------------------
 
         if internal:
-
             headers = [
-                "S.No.",
-                "Part Code",
-                "Description",
-                "Quantity",
-                "UOM",
-                "Unit Cost",
-                "Total Cost",
-                "Unit Price",
-                "Total Price",
+                "S.No.", "Component Type", "Part Code", "Description",
+                "Quantity", "UOM", "Unit Cost", "Total Cost",
+                "Unit Price", "Total Price"
             ]
-
         else:
-
             headers = [
-                "S.No.",
-                "Part Code",
-                "Description",
-                "Quantity",
-                "UOM",
-                "Unit Price",
-                "Total Price",
+                "S.No.", "Component Type", "Part Code", "Description",
+                "Quantity", "UOM", "Unit Price", "Total Price"
             ]
+
+        for col_no, header in enumerate(headers, 1):
+            ws.cell(row=row_no, column=col_no, value=header)
 
         header_row = row_no
-
-        for col_no, header in enumerate(
-            headers,
-            start=1
-        ):
-
-            ws.cell(
-                row=header_row,
-                column=col_no,
-                value=header
-            )
-
         row_no += 1
-
-        # ====================================================
-        # BOQ ROWS
-        # ====================================================
 
         for _, r in bom.iterrows():
-
+            values = []
             if internal:
-
                 values = [
-                    r.get("S.No."),
-                    r.get("Part Code"),
-                    r.get("Description"),
-                    r.get("Quantity"),
-                    r.get("UOM"),
-                    r.get("Unit Cost"),
-                    r.get("Total Cost"),
-                    r.get("Unit Price"),
-                    r.get("Total Price"),
+                    r.get("S.No."), r.get("Component Type"), r.get("Part Code"),
+                    r.get("Description"), r.get("Quantity"), r.get("UOM"),
+                    r.get("Unit Cost"), r.get("Total Cost"),
+                    r.get("Unit Price"), r.get("Total Price")
                 ]
-
             else:
-
                 values = [
-                    r.get("S.No."),
-                    r.get("Part Code"),
-                    r.get("Description"),
-                    r.get("Quantity"),
-                    r.get("UOM"),
-                    r.get("Unit Price"),
-                    r.get("Total Price"),
+                    r.get("S.No."), r.get("Component Type"), r.get("Part Code"),
+                    r.get("Description"), r.get("Quantity"), r.get("UOM"),
+                    r.get("Unit Price"), r.get("Total Price")
                 ]
 
-            for col_no, value in enumerate(
-                values,
-                start=1
-            ):
-
+            for col_no, value in enumerate(values, 1):
                 if pd.isna(value):
                     value = None
-
-                ws.cell(
-                    row=row_no,
-                    column=col_no,
-                    value=value
-                )
-
+                ws.cell(row=row_no, column=col_no, value=value)
             row_no += 1
 
-        # ====================================================
-        # PRICE SUMMARY
-        # ====================================================
-
+        # ---------------- PRICE SUMMARY ON SAME SHEET ----------------
         row_no += 1
-
-        ws.cell(
-            row=row_no,
-            column=1,
-            value="PRICE SUMMARY"
-        )
-
+        ws.cell(row=row_no, column=1, value="PRICE SUMMARY")
         row_no += 1
-
-        summary_start = row_no
 
         if internal:
-
             summary = [
                 ("Base Cost", base_cost),
                 ("Optional Cost", optional_cost),
@@ -1200,406 +1021,75 @@ def excel_bytes(
                 ("Margin Price", margin_price),
                 ("Freight", freight),
                 ("Installation", installation),
-                (
-                    "Warranty %",
-                    warranty_pct
-                ),
-                (
-                    "Warranty Amount",
-                    margin_price * warranty_pct / 100
-                ),
-                (
-                    "Final Selling Price",
-                    final_price
-                ),
+                ("Warranty %", warranty_pct),
+                ("Warranty Amount", margin_price * warranty_pct / 100),
+                ("Final Selling Price", final_price),
             ]
-
         else:
-
             summary = [
-                (
-                    "Final Selling Price",
-                    final_price
-                ),
+                ("Final Selling Price", final_price),
             ]
 
         for label, value in summary:
-
-            ws.cell(
-                row=row_no,
-                column=1,
-                value=label
-            )
-
-            try:
-                numeric_value = float(
-                    numeric(value)
-                )
-            except Exception:
-                numeric_value = 0.0
-
-            ws.cell(
-                row=row_no,
-                column=2,
-                value=numeric_value
-            )
-
+            ws.cell(row=row_no, column=1, value=label)
+            ws.cell(row=row_no, column=2, value=float(value))
             row_no += 1
 
-        # ====================================================
-        # EXCEL FORMATTING
-        # ====================================================
-
-        from openpyxl.styles import (
-            PatternFill,
-            Font,
-            Alignment,
-            Border,
-            Side
-        )
-
-        from openpyxl.utils import get_column_letter
-
+        # ---------------- EXCEL FORMATTING ----------------
         title_fill = "003B71"
         section_fill = "005EB8"
         header_fill = "D9EAF7"
 
-        # ----------------------------------------------------
-        # TITLE
-        # ----------------------------------------------------
-
-        ws.merge_cells(
-            start_row=1,
-            start_column=1,
-            end_row=1,
-            end_column=len(headers)
-        )
-
-        ws.merge_cells(
-            start_row=2,
-            start_column=1,
-            end_row=2,
-            end_column=len(headers)
-        )
+        ws.merge_cells(start_row=1, start_column=1, end_row=1, end_column=len(headers))
+        ws.merge_cells(start_row=2, start_column=1, end_row=2, end_column=len(headers))
 
         for cell in ws[1]:
-
-            cell.fill = PatternFill(
-                "solid",
-                fgColor=title_fill
-            )
-
-            cell.font = Font(
-                color="FFFFFF",
-                bold=True,
-                size=16
-            )
-
-            cell.alignment = Alignment(
-                horizontal="center",
-                vertical="center"
-            )
+            cell.fill = __import__("openpyxl").styles.PatternFill("solid", fgColor=title_fill)
+            cell.font = __import__("openpyxl").styles.Font(color="FFFFFF", bold=True, size=16)
 
         for cell in ws[2]:
+            cell.fill = __import__("openpyxl").styles.PatternFill("solid", fgColor=section_fill)
+            cell.font = __import__("openpyxl").styles.Font(color="FFFFFF", bold=True, size=11)
 
-            cell.fill = PatternFill(
-                "solid",
-                fgColor=section_fill
-            )
+        for c in range(1, len(headers) + 1):
+            cell = ws.cell(header_row, c)
+            cell.fill = __import__("openpyxl").styles.PatternFill("solid", fgColor=header_fill)
+            cell.font = __import__("openpyxl").styles.Font(bold=True)
+            cell.alignment = __import__("openpyxl").styles.Alignment(horizontal="center", vertical="center")
 
-            cell.font = Font(
-                color="FFFFFF",
-                bold=True,
-                size=11
-            )
+        # Currency formats
+        for row in ws.iter_rows():
+            for cell in row:
+                if isinstance(cell.value, (int, float)) and cell.column in range(7, len(headers) + 1):
+                    cell.number_format = '₹ #,##0.00'
 
-            cell.alignment = Alignment(
-                horizontal="center",
-                vertical="center"
-            )
-
-        # ----------------------------------------------------
-        # BOQ HEADER
-        # ----------------------------------------------------
-
-        for col_no in range(
-            1,
-            len(headers) + 1
-        ):
-
-            cell = ws.cell(
-                row=header_row,
-                column=col_no
-            )
-
-            cell.fill = PatternFill(
-                "solid",
-                fgColor=header_fill
-            )
-
-            cell.font = Font(
-                bold=True
-            )
-
-            cell.alignment = Alignment(
-                horizontal="center",
-                vertical="center",
-                wrap_text=True
-            )
-
-        # ----------------------------------------------------
-        # BOQ ALIGNMENT
-        # ----------------------------------------------------
-
-        for rr in range(
-            header_row + 1,
-            header_row + len(bom) + 1
-        ):
-
-            # S.No.
-            ws.cell(
-                rr,
-                1
-            ).alignment = Alignment(
-                horizontal="center"
-            )
-
-            # Quantity
-            ws.cell(
-                rr,
-                4
-            ).alignment = Alignment(
-                horizontal="center"
-            )
-
-            # UOM
-            ws.cell(
-                rr,
-                5
-            ).alignment = Alignment(
-                horizontal="center"
-            )
-
-            # Prices
-            for cc in range(
-                6,
-                len(headers) + 1
-            ):
-
-                ws.cell(
-                    rr,
-                    cc
-                ).alignment = Alignment(
-                    horizontal="right"
-                )
-
-        # ====================================================
-        # CURRENCY FORMATTING
-        # ====================================================
-
-        # Excel BOQ currency columns
-        if internal:
-
-            currency_columns = [
-                6,  # Unit Cost
-                7,  # Total Cost
-                8,  # Unit Price
-                9,  # Total Price
-            ]
-
-        else:
-
-            currency_columns = [
-                6,  # Unit Price
-                7,  # Total Price
-            ]
-
-        for rr in range(
-            header_row + 1,
-            header_row + len(bom) + 1
-        ):
-
-            for cc in currency_columns:
-
-                ws.cell(
-                    rr,
-                    cc
-                ).number_format = '₹ #,##0.00'
-
-        # ====================================================
-        # SUMMARY FORMATTING
-        # ====================================================
-
-        for rr in range(
-            summary_start,
-            row_no
-        ):
-
-            label = ws.cell(
-                rr,
-                1
-            ).value
-
-            value_cell = ws.cell(
-                rr,
-                2
-            )
-
-            value_cell.alignment = Alignment(
-                horizontal="right"
-            )
-
-            if label in (
-                "Margin %",
-                "Warranty %"
-            ):
-
-                value_cell.number_format = '0.00'
-
+        # Summary values are currency except percentage fields.
+        summary_start = header_row + len(bom) + 3
+        for rr in range(summary_start, row_no):
+            label = ws.cell(rr, 1).value
+            if label in ("Margin %", "Warranty %"):
+                ws.cell(rr, 2).number_format = '0.00'
             else:
+                ws.cell(rr, 2).number_format = '₹ #,##0.00'
 
-                value_cell.number_format = (
-                    '₹ #,##0.00'
-                )
+        widths = {
+            1: 10, 2: 23, 3: 22, 4: 65, 5: 12,
+            6: 10, 7: 17, 8: 17, 9: 17, 10: 17
+        }
+        for col, width in widths.items():
+            if col <= len(headers):
+                ws.column_dimensions[__import__("openpyxl").utils.get_column_letter(col)].width = width
 
-        # ----------------------------------------------------
-        # FINAL SELLING PRICE HIGHLIGHT
-        # ----------------------------------------------------
-
-        for rr in range(
-            summary_start,
-            row_no
-        ):
-
-            if ws.cell(
-                rr,
-                1
-            ).value == "Final Selling Price":
-
-                ws.cell(
-                    rr,
-                    1
-                ).font = Font(
-                    bold=True,
-                    color="003B71",
-                    size=12
-                )
-
-                ws.cell(
-                    rr,
-                    2
-                ).font = Font(
-                    bold=True,
-                    color="003B71",
-                    size=12
-                )
-
-                ws.cell(
-                    rr,
-                    2
-                ).number_format = (
-                    '₹ #,##0.00'
-                )
-
-        # ====================================================
-        # COLUMN WIDTHS
-        # ====================================================
-
-        if internal:
-
-            widths = {
-                1: 10,
-                2: 23,
-                3: 65,
-                4: 12,
-                5: 10,
-                6: 17,
-                7: 17,
-                8: 17,
-                9: 17,
-            }
-
-        else:
-
-            widths = {
-                1: 10,
-                2: 23,
-                3: 65,
-                4: 12,
-                5: 10,
-                6: 17,
-                7: 17,
-            }
-
-        for col_no, width in widths.items():
-
-            ws.column_dimensions[
-                get_column_letter(col_no)
-            ].width = width
-
-        # ====================================================
-        # GENERAL SHEET SETTINGS
-        # ====================================================
-
-        ws.freeze_panes = (
-            f"A{header_row + 1}"
-        )
-
-        last_boq_row = (
-            header_row + len(bom)
-        )
-
-        ws.auto_filter.ref = (
-            f"A{header_row}:"
-            f"{get_column_letter(len(headers))}"
-            f"{last_boq_row}"
-        )
-
-        ws.sheet_view.showGridLines = False
-
-        ws.row_dimensions[1].height = 25
-        ws.row_dimensions[2].height = 20
-        ws.row_dimensions[header_row].height = 30
+        ws.freeze_panes = f"A{header_row + 1}"
+        ws.auto_filter.ref = f"A{header_row}:{__import__('openpyxl').utils.get_column_letter(len(headers))}{header_row + len(bom)}"
 
     output.seek(0)
-
     return output.getvalue()
 
 
-# ============================================================
-# PDF EXPORT
-# ============================================================
-
-# ============================================================
-# PDF OUTPUT
-# ============================================================
-
 def pdf_bytes(internal=False, bom=None, final_price=0.0):
-    """
-    Create PDF report.
-
-    Component Type is NOT displayed in the PDF.
-    Final Selling Price is displayed clearly.
-    """
-
+    """Create a single-page/flowing PDF report for Sales or Internal use."""
     output = BytesIO()
-
-    if bom is None:
-        bom = build_bom()
-
-    # --------------------------------------------------------
-    # FINAL PRICE
-    # --------------------------------------------------------
-
-    try:
-        final_price = float(numeric(final_price))
-    except Exception:
-        final_price = 0.0
-
-    # --------------------------------------------------------
-    # PDF DOCUMENT
-    # --------------------------------------------------------
-
     doc = SimpleDocTemplate(
         output,
         pagesize=landscape(A4),
@@ -1610,1064 +1100,243 @@ def pdf_bytes(internal=False, bom=None, final_price=0.0):
         title="Eaton MDC Solution Configurator",
     )
 
-    # --------------------------------------------------------
-    # STYLES
-    # --------------------------------------------------------
-
     styles = getSampleStyleSheet()
-
     title_style = ParagraphStyle(
-        "MdcTitle",
-        parent=styles["Title"],
-        fontSize=17,
-        leading=20,
-        alignment=TA_CENTER,
-        spaceAfter=4,
+        "MdcTitle", parent=styles["Title"], fontSize=17,
+        leading=20, alignment=TA_CENTER, spaceAfter=4
     )
-
     sub_style = ParagraphStyle(
-        "MdcSub",
-        parent=styles["Normal"],
-        fontSize=9,
-        leading=11,
-        alignment=TA_CENTER,
-        spaceAfter=8,
+        "MdcSub", parent=styles["Normal"], fontSize=9,
+        alignment=TA_CENTER, spaceAfter=8
     )
-
     small = ParagraphStyle(
-        "MdcSmall",
-        parent=styles["Normal"],
-        fontSize=7,
-        leading=8,
+        "MdcSmall", parent=styles["Normal"], fontSize=7,
+        leading=8
     )
-
-    center_small = ParagraphStyle(
-        "MdcCenter",
-        parent=small,
-        alignment=TA_CENTER,
-    )
-
     right_small = ParagraphStyle(
-        "MdcRight",
-        parent=small,
-        alignment=TA_RIGHT,
+        "MdcRight", parent=small, alignment=TA_RIGHT
     )
-
-    # --------------------------------------------------------
-    # STORY
-    # --------------------------------------------------------
 
     story = [
-        Paragraph(
-            "EATON MDC SOLUTION CONFIGURATOR",
-            title_style
-        ),
-        Paragraph(
-            "Modular Data Center Solution Configuration & Pricing",
-            sub_style
-        ),
+        Paragraph("EATON MDC SOLUTION CONFIGURATOR", title_style),
+        Paragraph("Modular Data Center Solution Configuration & Pricing", sub_style),
     ]
-
-    # ========================================================
-    # CUSTOMER / CONFIGURATION DETAILS
-    # ========================================================
 
     info = customer_table()
-
     info_data = []
-
     for _, r in info.iterrows():
-
-        field_value = clean_text(
-            r.get("Field", "")
-        )
-
-        value_value = clean_text(
-            r.get("Value", "")
-        )
-
         info_data.append([
-            Paragraph(
-                f"<b>{field_value}</b>",
-                small
-            ),
-            Paragraph(
-                value_value,
-                small
-            ),
+            Paragraph(f"<b>{clean_text(r['Field'])}</b>", small),
+            Paragraph(clean_text(r["Value"]), small),
         ])
 
-    info_table = Table(
-        info_data,
-        colWidths=[
-            42 * mm,
-            90 * mm
-        ],
-        hAlign="LEFT",
-    )
-
-    info_table.setStyle(
-        TableStyle([
-            (
-                "GRID",
-                (0, 0),
-                (-1, -1),
-                0.35,
-                colors.grey
-            ),
-            (
-                "BACKGROUND",
-                (0, 0),
-                (0, -1),
-                colors.HexColor("#D9EAF7")
-            ),
-            (
-                "VALIGN",
-                (0, 0),
-                (-1, -1),
-                "TOP"
-            ),
-            (
-                "LEFTPADDING",
-                (0, 0),
-                (-1, -1),
-                5
-            ),
-            (
-                "RIGHTPADDING",
-                (0, 0),
-                (-1, -1),
-                5
-            ),
-            (
-                "TOPPADDING",
-                (0, 0),
-                (-1, -1),
-                3
-            ),
-            (
-                "BOTTOMPADDING",
-                (0, 0),
-                (-1, -1),
-                3
-            ),
-        ])
-    )
-
-    story.append(info_table)
-    story.append(
-        Spacer(1, 5 * mm)
-    )
-
-    # ========================================================
-    # FINAL BOQ HEADING
-    # ========================================================
-
-    boq_heading_style = ParagraphStyle(
-        "BOQHeading",
-        parent=styles["Heading3"],
-        fontSize=10,
-        leading=12,
-        textColor=colors.HexColor("#003B71"),
-        spaceAfter=4,
-        spaceBefore=0,
-    )
-
-    story.append(
-        Paragraph(
-            "FINAL BOQ",
-            boq_heading_style
-        )
-    )
-
-    # ========================================================
-    # CUSTOMER PDF HEADERS
-    #
-    # IMPORTANT:
-    # Component Type / Type is NOT included.
-    # ========================================================
+    info_table = Table(info_data, colWidths=[42 * mm, 90 * mm])
+    info_table.setStyle(TableStyle([
+        ("GRID", (0, 0), (-1, -1), 0.35, colors.grey),
+        ("BACKGROUND", (0, 0), (0, -1), colors.HexColor("#D9EAF7")),
+        ("VALIGN", (0, 0), (-1, -1), "TOP"),
+        ("LEFTPADDING", (0, 0), (-1, -1), 5),
+        ("RIGHTPADDING", (0, 0), (-1, -1), 5),
+        ("TOPPADDING", (0, 0), (-1, -1), 3),
+        ("BOTTOMPADDING", (0, 0), (-1, -1), 3),
+    ]))
+    story += [info_table, Spacer(1, 6 * mm)]
 
     if internal:
-
         headers = [
-            "S.No.",
-            "Part Code",
-            "Description",
-            "Qty",
-            "UOM",
-            "Unit Cost",
-            "Total Cost",
-            "Unit Price",
-            "Total Price",
+            "S.No.", "Type", "Part Code", "Description", "Qty", "UOM",
+            "Unit Cost", "Total Cost", "Unit Price", "Total Price"
         ]
-
     else:
-
         headers = [
-            "S.No.",
-            "Part Code",
-            "Description",
-            "Qty",
-            "UOM",
-            "Unit Price",
-            "Total Price",
+            "S.No.", "Type", "Part Code", "Description", "Qty", "UOM",
+            "Unit Price", "Total Price"
         ]
-
-    # ========================================================
-    # BOQ TABLE DATA
-    # ========================================================
 
     table_data = [headers]
-
     for _, r in bom.iterrows():
-
-        description = Paragraph(
-            clean_text(
-                r.get("Description", "")
-            ),
-            small
-        )
-
-        serial_no = Paragraph(
-            clean_text(
-                r.get("S.No.", "")
-            ),
-            center_small
-        )
-
-        part_code = Paragraph(
-            clean_text(
-                r.get("Part Code", "")
-            ),
-            small
-        )
-
-        quantity = Paragraph(
-            clean_text(
-                r.get("Quantity", "")
-            ),
-            center_small
-        )
-
-        uom = Paragraph(
-            clean_text(
-                r.get("UOM", "")
-            ),
-            center_small
-        )
-
+        desc = Paragraph(clean_text(r.get("Description")), small)
         if internal:
-
-            row_data = [
-                serial_no,
-                part_code,
-                description,
-                quantity,
-                uom,
-                Paragraph(
-                    money(r.get("Unit Cost")),
-                    right_small
-                ),
-                Paragraph(
-                    money(r.get("Total Cost")),
-                    right_small
-                ),
-                Paragraph(
-                    money(r.get("Unit Price")),
-                    right_small
-                ),
-                Paragraph(
-                    money(r.get("Total Price")),
-                    right_small
-                ),
+            vals = [
+                clean_text(r.get("S.No.")), clean_text(r.get("Component Type")),
+                clean_text(r.get("Part Code")), desc,
+                clean_text(r.get("Quantity")), clean_text(r.get("UOM")),
+                money(r.get("Unit Cost")), money(r.get("Total Cost")),
+                money(r.get("Unit Price")), money(r.get("Total Price")),
             ]
-
         else:
-
-            row_data = [
-                serial_no,
-                part_code,
-                description,
-                quantity,
-                uom,
-                Paragraph(
-                    money(r.get("Unit Price")),
-                    right_small
-                ),
-                Paragraph(
-                    money(r.get("Total Price")),
-                    right_small
-                ),
+            vals = [
+                clean_text(r.get("S.No.")), clean_text(r.get("Component Type")),
+                clean_text(r.get("Part Code")), desc,
+                clean_text(r.get("Quantity")), clean_text(r.get("UOM")),
+                money(r.get("Unit Price")), money(r.get("Total Price")),
             ]
-
-        table_data.append(row_data)
-
-    # ========================================================
-    # PDF COLUMN WIDTHS
-    # ========================================================
+        table_data.append(vals)
 
     if internal:
-
-        widths = [
-            12 * mm,   # S.No.
-            30 * mm,   # Part Code
-            78 * mm,   # Description
-            13 * mm,   # Qty
-            13 * mm,   # UOM
-            25 * mm,   # Unit Cost
-            27 * mm,   # Total Cost
-            25 * mm,   # Unit Price
-            27 * mm,   # Total Price
-        ]
-
+        widths = [12*mm, 28*mm, 27*mm, 85*mm, 12*mm, 12*mm, 25*mm, 27*mm, 25*mm, 27*mm]
     else:
+        widths = [13*mm, 30*mm, 30*mm, 105*mm, 13*mm, 13*mm, 28*mm, 30*mm]
 
-        widths = [
-            13 * mm,   # S.No.
-            32 * mm,   # Part Code
-            92 * mm,   # Description
-            13 * mm,   # Qty
-            13 * mm,   # UOM
-            28 * mm,   # Unit Price
-            30 * mm,   # Total Price
-        ]
-
-    # ========================================================
-    # BOQ TABLE
-    # ========================================================
-
-    boq_table = Table(
-        table_data,
-        colWidths=widths,
-        repeatRows=1,
-        hAlign="CENTER",
-    )
-
-    # ========================================================
-    # BOQ TABLE STYLE
-    #
-    # Explicit coordinates prevent column mismatch.
-    # ========================================================
-
-    boq_style_commands = [
-        # Header
-        (
-            "BACKGROUND",
-            (0, 0),
-            (-1, 0),
-            colors.HexColor("#003B71")
-        ),
-
-        (
-            "TEXTCOLOR",
-            (0, 0),
-            (-1, 0),
-            colors.white
-        ),
-
-        (
-            "FONTNAME",
-            (0, 0),
-            (-1, 0),
-            "Helvetica-Bold"
-        ),
-
-        (
-            "FONTSIZE",
-            (0, 0),
-            (-1, -1),
-            7
-        ),
-
-        # Grid
-        (
-            "GRID",
-            (0, 0),
-            (-1, -1),
-            0.3,
-            colors.grey
-        ),
-
-        # Vertical alignment
-        (
-            "VALIGN",
-            (0, 0),
-            (-1, -1),
-            "MIDDLE"
-        ),
-
-        # S.No.
-        (
-            "ALIGN",
-            (0, 0),
-            (0, -1),
-            "CENTER"
-        ),
-
-        # Qty
-        (
-            "ALIGN",
-            (3, 1),
-            (3, -1),
-            "CENTER"
-        ),
-
-        # UOM
-        (
-            "ALIGN",
-            (4, 1),
-            (4, -1),
-            "CENTER"
-        ),
-
-        # Money columns
-        (
-            "ALIGN",
-            (5, 1),
-            (-1, -1),
-            "RIGHT"
-        ),
-
-        # Padding
-        (
-            "LEFTPADDING",
-            (0, 0),
-            (-1, -1),
-            3
-        ),
-
-        (
-            "RIGHTPADDING",
-            (0, 0),
-            (-1, -1),
-            3
-        ),
-
-        (
-            "TOPPADDING",
-            (0, 0),
-            (-1, -1),
-            3
-        ),
-
-        (
-            "BOTTOMPADDING",
-            (0, 0),
-            (-1, -1),
-            3
-        ),
-    ]
-
-    boq_table.setStyle(
-        TableStyle(
-            boq_style_commands
-        )
-    )
-
-    story.append(boq_table)
-
-    story.append(
-        Spacer(1, 5 * mm)
-    )
-
-    # ========================================================
-    # PRICE SUMMARY
-    # ========================================================
+    boq_table = Table(table_data, colWidths=widths, repeatRows=1)
+    boq_table.setStyle(TableStyle([
+        ("BACKGROUND", (0, 0), (-1, 0), colors.HexColor("#003B71")),
+        ("TEXTCOLOR", (0, 0), (-1, 0), colors.white),
+        ("FONTNAME", (0, 0), (-1, 0), "Helvetica-Bold"),
+        ("FONTSIZE", (0, 0), (-1, -1), 7),
+        ("GRID", (0, 0), (-1, -1), 0.3, colors.grey),
+        ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
+        ("ALIGN", (0, 0), (2, -1), "LEFT"),
+        ("ALIGN", (4, 1), (-1, -1), "RIGHT"),
+        ("LEFTPADDING", (0, 0), (-1, -1), 3),
+        ("RIGHTPADDING", (0, 0), (-1, -1), 3),
+        ("TOPPADDING", (0, 0), (-1, -1), 3),
+        ("BOTTOMPADDING", (0, 0), (-1, -1), 3),
+    ]))
+    story += [Paragraph("FINAL BOQ", styles["Heading3"]), boq_table, Spacer(1, 5 * mm)]
 
     if internal:
-
-        summary_data = [
-            [
-                "Base Cost",
-                money(base_cost),
-                "Optional Cost",
-                money(optional_cost),
-            ],
-            [
-                "PDU Cost",
-                money(pdu_cost),
-                "Total Cost",
-                money(total_cost),
-            ],
-            [
-                "Margin %",
-                f"{margin_pct:.2f}%",
-                "Margin Price",
-                money(margin_price),
-            ],
-            [
-                "Freight",
-                money(freight),
-                "Installation",
-                money(installation),
-            ],
-            [
-                "Warranty %",
-                f"{warranty_pct:.2f}%",
-                "Warranty Amount",
-                money(
-                    margin_price
-                    * warranty_pct
-                    / 100
-                ),
-            ],
+        summary = [
+            ["Base Cost", money(base_cost), "Optional Cost", money(optional_cost)],
+            ["PDU Cost", money(pdu_cost), "Total Cost", money(total_cost)],
+            ["Margin %", f"{margin_pct:.2f}%", "Margin Price", money(margin_price)],
+            ["Freight", money(freight), "Installation", money(installation)],
+            ["Warranty %", f"{warranty_pct:.2f}%", "Warranty Amount", money(margin_price * warranty_pct / 100)],
+            ["FINAL SELLING PRICE", money(final_price), "", ""],
         ]
-
-        summary_table = Table(
-            summary_data,
-            colWidths=[
-                38 * mm,
-                42 * mm,
-                45 * mm,
-                45 * mm,
-            ],
-            hAlign="RIGHT",
-        )
-
+        summary_table = Table(summary, colWidths=[38*mm, 42*mm, 45*mm, 45*mm])
     else:
-
-        summary_data = [
-            [
-                "FINAL SELLING PRICE",
-                money(final_price)
-            ]
-        ]
-
         summary_table = Table(
-            summary_data,
-            colWidths=[
-                55 * mm,
-                45 * mm
-            ],
-            hAlign="RIGHT",
+            [["FINAL SELLING PRICE", money(final_price)]],
+            colWidths=[55*mm, 45*mm]
         )
 
-    # ========================================================
-    # SUMMARY STYLE
-    # ========================================================
-
-    summary_style = [
-        (
-            "GRID",
-            (0, 0),
-            (-1, -1),
-            0.4,
-            colors.grey
-        ),
-
-        (
-            "BACKGROUND",
-            (0, 0),
-            (-1, -1),
-            colors.HexColor("#F4F8FC")
-        ),
-
-        (
-            "FONTNAME",
-            (0, 0),
-            (-1, -1),
-            "Helvetica-Bold"
-        ),
-
-        (
-            "FONTSIZE",
-            (0, 0),
-            (-1, -1),
-            8
-        ),
-
-        (
-            "VALIGN",
-            (0, 0),
-            (-1, -1),
-            "MIDDLE"
-        ),
-
-        (
-            "ALIGN",
-            (1, 0),
-            (-1, -1),
-            "RIGHT"
-        ),
-
-        (
-            "LEFTPADDING",
-            (0, 0),
-            (-1, -1),
-            5
-        ),
-
-        (
-            "RIGHTPADDING",
-            (0, 0),
-            (-1, -1),
-            5
-        ),
-
-        (
-            "TOPPADDING",
-            (0, 0),
-            (-1, -1),
-            5
-        ),
-
-        (
-            "BOTTOMPADDING",
-            (0, 0),
-            (-1, -1),
-            5
-        ),
-    ]
-
-    summary_table.setStyle(
-        TableStyle(summary_style)
-    )
-
-    story.append(summary_table)
-
-    # ========================================================
-    # FINAL SELLING PRICE
-    #
-    # Always show it clearly.
-    # ========================================================
-
-    story.append(
-        Spacer(1, 4 * mm)
-    )
-
-    final_price_table = Table(
-        [
-            [
-                "FINAL SELLING PRICE",
-                money(final_price)
-            ]
-        ],
-        colWidths=[
-            55 * mm,
-            45 * mm
-        ],
-        hAlign="RIGHT",
-    )
-
-    final_price_table.setStyle(
-        TableStyle([
-            (
-                "GRID",
-                (0, 0),
-                (-1, -1),
-                0.6,
-                colors.HexColor("#003B71")
-            ),
-
-            (
-                "BACKGROUND",
-                (0, 0),
-                (-1, -1),
-                colors.HexColor("#D9EAF7")
-            ),
-
-            (
-                "TEXTCOLOR",
-                (0, 0),
-                (-1, -1),
-                colors.HexColor("#003B71")
-            ),
-
-            (
-                "FONTNAME",
-                (0, 0),
-                (-1, -1),
-                "Helvetica-Bold"
-            ),
-
-            (
-                "FONTSIZE",
-                (0, 0),
-                (-1, -1),
-                10
-            ),
-
-            (
-                "ALIGN",
-                (1, 0),
-                (1, 0),
-                "RIGHT"
-            ),
-
-            (
-                "VALIGN",
-                (0, 0),
-                (-1, -1),
-                "MIDDLE"
-            ),
-
-            (
-                "LEFTPADDING",
-                (0, 0),
-                (-1, -1),
-                6
-            ),
-
-            (
-                "RIGHTPADDING",
-                (0, 0),
-                (-1, -1),
-                6
-            ),
-
-            (
-                "TOPPADDING",
-                (0, 0),
-                (-1, -1),
-                6
-            ),
-
-            (
-                "BOTTOMPADDING",
-                (0, 0),
-                (-1, -1),
-                6
-            ),
-        ])
-    )
-
-    story.append(
-        final_price_table
-    )
-
-    # ========================================================
-    # BUILD PDF
-    # ========================================================
+    summary_table.setStyle(TableStyle([
+        ("GRID", (0, 0), (-1, -1), 0.4, colors.grey),
+        ("BACKGROUND", (0, 0), (-1, -1), colors.HexColor("#F4F8FC")),
+        ("FONTNAME", (0, 0), (-1, -1), "Helvetica-Bold"),
+        ("FONTSIZE", (0, 0), (-1, -1), 8),
+        ("ALIGN", (1, 0), (-1, -1), "RIGHT"),
+        ("SPAN", (0, -1), (2, -1)) if internal else ("SPAN", (0, 0), (0, 0)),
+        ("TEXTCOLOR", (0, -1), (-1, -1), colors.HexColor("#003B71")),
+    ]))
+    story += [summary_table]
 
     doc.build(story)
-
     output.seek(0)
-
     return output.getvalue()
+
 
 # ============================================================
 
 # CONSTANTS USED BY UI
-# No product part numbers are hardcoded here.
-# Product details are read from MDC_Master_V1.xlsx.
+# ============================================================
+
+CAMERA_PARTS = (
+    accessories_df.loc[
+        accessories_df["Part Code"].astype(str).str.upper().str.contains("CAMERA", na=False)
+        | accessories_df["Description"].astype(str).str.upper().str.contains("CAMERA", na=False),
+        "Part Code"
+    ]
+    .astype(str)
+    .str.strip()
+    .tolist()
+    if not accessories_df.empty
+    else []
+)
+
+OTHER_OPTIONAL_PARTS = [
+    ("801223664", "Rotating Keyboard Tray"),
+    ("801075237", "Cable Manager"),
+    ("801029022", "Top Cable Tray"),
+    ("801075235", "Brush Panel"),
+]
 
 
+# ============================================================
 # HEADER
 # ============================================================
 
-# ============================================================
-# LIGHT / COMPACT DESKTOP UI
-# ============================================================
-st.markdown("""
-<style>
-/* ---------- overall page ---------- */
-[data-testid="stAppViewContainer"] {
-    background: #F8FAFC;
-}
-
-[data-testid="stMainBlockContainer"] {
-    max-width: 1500px;
-    padding-top: 1.0rem;
-    padding-bottom: 2rem;
-}
-
-/* ---------- title ---------- */
-.mdc-title-card {
-    background: linear-gradient(135deg, #075EA8 0%, #003B71 100%);
-    border-radius: 12px;
-    padding: 20px 26px 18px 26px;
-    margin: 0 0 12px 0;
-    box-shadow: 0 5px 18px rgba(0,59,113,.13);
-}
-
-.mdc-title {
-    color: #FFFFFF !important;
-    font-size: 30px !important;
-    font-weight: 800 !important;
-    letter-spacing: .15px;
-    line-height: 1.15 !important;
-    margin: 0 !important;
-}
-
-.mdc-subtitle {
-    color: #DDEEFF !important;
-    font-size: 13px !important;
-    font-weight: 500 !important;
-    margin-top: 5px !important;
-    line-height: 1.25 !important;
-}
-
-/* ---------- top information strip ---------- */
-.mdc-meta-card {
-    background: #FFFFFF;
-    border: 1px solid #DCE7F2;
-    border-radius: 10px;
-    padding: 9px 14px;
-    margin-bottom: 12px;
-    box-shadow: 0 2px 8px rgba(15,23,42,.04);
-}
-
-.mdc-meta-grid {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    gap: 10px;
-    text-align: center;
-}
-
-.mdc-meta-item {
-    flex: 1;
-    min-width: 0;
-}
-
-.mdc-meta-label {
-    color: #64748B;
-    font-size: 9px;
-    font-weight: 800;
-    letter-spacing: .55px;
-}
-
-.mdc-meta-value {
-    color: #003B71;
-    font-size: 14px;
-    font-weight: 800;
-    margin-top: 2px;
-}
-
-/* ---------- section cards ---------- */
-[data-testid="stVerticalBlockBorderWrapper"] {
-    border: 1px solid #DCE7F2 !important;
-    border-radius: 11px !important;
-    background: #FFFFFF !important;
-    box-shadow: 0 2px 9px rgba(15,23,42,.035) !important;
-}
-
-.mdc-card-heading {
-    display: flex;
-    align-items: center;
-    gap: 9px;
-    color: #173B5E;
-    font-size: 14px;
-    font-weight: 800;
-    letter-spacing: .15px;
-    margin: 0 0 8px 0;
-    padding-bottom: 7px;
-    border-bottom: 1px solid #E8EFF6;
-}
-
-.mdc-number {
-    display: inline-flex;
-    align-items: center;
-    justify-content: center;
-    width: 23px;
-    height: 23px;
-    border-radius: 7px;
-    background: #EAF3FB;
-    color: #075EA8;
-    font-size: 11px;
-    font-weight: 800;
-}
-
-.mdc-mini-heading {
-    color: #334E68;
-    font-size: 11px;
-    font-weight: 800;
-    margin: 7px 0 3px 0;
-    text-transform: uppercase;
-    letter-spacing: .3px;
-}
-
-.mdc-help {
-    color: #64748B;
-    font-size: 10px;
-    margin-top: -3px;
-    margin-bottom: 5px;
-}
-
-/* ---------- compact Streamlit controls ---------- */
-[data-testid="stWidgetLabel"] p {
-    font-size: 11px !important;
-    font-weight: 650 !important;
-    color: #475569 !important;
-    margin-bottom: 2px !important;
-}
-
-[data-testid="stTextInput"] input {
-    font-size: 12px !important;
-    min-height: 36px !important;
-}
-
-[data-testid="stNumberInput"] input {
-    font-size: 12px !important;
-}
-
-[data-baseweb="select"] {
-    font-size: 12px !important;
-}
-
-[data-baseweb="select"] * {
-    font-size: 12px !important;
-}
-
-[data-testid="stRadio"] label,
-[data-testid="stCheckbox"] label {
-    font-size: 11px !important;
-}
-
-[data-testid="stRadio"] > div {
-    gap: 8px !important;
-}
-
-[data-testid="stCheckbox"] {
-    margin-bottom: -4px !important;
-}
-
-.stButton > button,
-.stDownloadButton > button {
-    min-height: 34px !important;
-    font-size: 12px !important;
-    border-radius: 7px !important;
-}
-
-/* ---------- small selected-detail panel ---------- */
-.mdc-detail-box {
-    background: #F7FAFD;
-    border: 1px solid #E1EAF2;
-    border-radius: 7px;
-    padding: 7px 9px;
-    margin-top: 5px;
-}
-
-.mdc-detail-title {
-    color: #075EA8;
-    font-size: 10px;
-    font-weight: 800;
-    margin-bottom: 2px;
-}
-
-.mdc-detail-text {
-    color: #475569;
-    font-size: 10px;
-    line-height: 1.35;
-}
-
-/* ---------- accessory rows ---------- */
-.mdc-accessory-row {
-    padding: 2px 0;
-}
-
-/* Reduce default vertical gaps without changing functionality. */
-[data-testid="stVerticalBlock"] {
-    gap: .45rem;
-}
-
-@media (max-width: 900px) {
-    .mdc-title { font-size: 25px !important; }
-    .mdc-title-card { padding: 17px 20px 15px 20px; }
-}
-</style>
-""", unsafe_allow_html=True)
-
 st.html("""
-<div class="mdc-title-card">
-    <div class="mdc-title">Eaton MDC Solution Configurator</div>
-    <div class="mdc-subtitle">Modular Data Center Solution Configuration &amp; Pricing</div>
+<div style="
+    background:linear-gradient(135deg,#005EB8,#003B71);
+    padding:22px 30px;
+    border-radius:10px;
+    margin-bottom:20px;
+    box-shadow:0 4px 12px rgba(0,59,113,0.18);
+">
+    <div style="
+        color:white;
+        font-size:32px;
+        font-weight:700;
+        letter-spacing:0.3px;
+        line-height:1.2;
+    ">
+        Eaton MDC Solution Configurator
+    </div>
+
+    <div style="
+        color:#E6F2FF;
+        font-size:16px;
+        margin-top:7px;
+    ">
+        Modular Data Center Solution Configuration &amp; Pricing
+    </div>
 </div>
 """)
 
-# ============================================================
-# TOP INFORMATION BAR
-# CUSTOMER NAME + USER INFORMATION
-# ============================================================
 
-top_customer_col, top_info_col = st.columns([2.2, 5.8], gap="small")
+current_date = datetime.now().strftime("%d-%m-%Y")
 
-# ------------------------------------------------------------
-# CUSTOMER NAME
-# ------------------------------------------------------------
-with top_customer_col:
-    customer_name = st.text_input(
-        "Customer Name",
-        value=st.session_state.customer_name,
-        key="customer_name_input",
-        placeholder="Enter customer name",
-        label_visibility="collapsed",
-    )
-
-st.session_state.customer_name = customer_name.strip()
-
-
-# ------------------------------------------------------------
-# USER CODE / COUNT / DATE
-# ------------------------------------------------------------
-with top_info_col:
-
-    current_date = datetime.now().strftime("%d-%m-%Y")
-
-    st.html(f"""
+st.html(f"""
+<div style="
+    background:#F7FBFF;
+    border:1px solid #B8D8F5;
+    border-radius:8px;
+    padding:14px 18px;
+    margin-bottom:20px;
+">
     <div style="
-        background:#F7FBFF;
-        border:1px solid #C9DFF2;
-        border-radius:6px;
-        padding:8px 14px;
-        height:48px;
         display:flex;
-        align-items:center;
+        justify-content:space-between;
+        text-align:center;
+        gap:20px;
     ">
-        <div style="
-            display:flex;
-            width:100%;
-            justify-content:space-between;
-            align-items:center;
-            text-align:center;
-        ">
-
-            <div style="flex:1;">
-                <span style="
-                    font-size:9px;
-                    color:#64748B;
-                    font-weight:700;
-                ">USER CODE</span><br>
-                <span style="
-                    font-size:13px;
-                    font-weight:700;
-                    color:#003B71;
-                ">{st.session_state.user_code}</span>
+        <div style="flex:1;">
+            <div style="font-size:13px;color:#64748B;margin-bottom:5px;">
+                USER CODE
             </div>
-
-            <div style="flex:1;">
-                <span style="
-                    font-size:9px;
-                    color:#64748B;
-                    font-weight:700;
-                ">USER COUNT</span><br>
-                <span style="
-                    font-size:13px;
-                    font-weight:700;
-                    color:#003B71;
-                ">{st.session_state.user_count}</span>
+            <div style="font-size:20px;font-weight:700;color:#003B71;">
+                {st.session_state.user_code}
             </div>
+        </div>
 
-            <div style="flex:1;">
-                <span style="
-                    font-size:9px;
-                    color:#64748B;
-                    font-weight:700;
-                ">DATE</span><br>
-                <span style="
-                    font-size:13px;
-                    font-weight:700;
-                    color:#003B71;
-                ">{current_date}</span>
+        <div style="flex:1;">
+            <div style="font-size:13px;color:#64748B;margin-bottom:5px;">
+                USER COUNT
             </div>
+            <div style="font-size:20px;font-weight:700;color:#003B71;">
+                {st.session_state.user_count}
+            </div>
+        </div>
 
+        <div style="flex:1;">
+            <div style="font-size:13px;color:#64748B;margin-bottom:5px;">
+                DATE
+            </div>
+            <div style="font-size:20px;font-weight:700;color:#003B71;">
+                {current_date}
+            </div>
         </div>
     </div>
-    """)
+</div>
+""")
+
 
 # ============================================================
 # SIDEBAR ACCESS
 # ============================================================
+
 with st.sidebar:
     st.header("User Access")
 
@@ -2721,1115 +1390,301 @@ is_internal = (
 
 
 # ============================================================
-# MAIN CONFIGURATION AREA
-# LEFT  = MDC + PDU
-# RIGHT = ACCESSORIES
+# 1. CUSTOMER DETAILS
 # ============================================================
 
-main_left, main_right = st.columns(
-    [1.0, 1.15],
-    gap="medium"
+customer_name = st.text_input(
+    "Customer Name",
+    value=st.session_state.customer_name,
+    key="customer_name_input",
+    placeholder="Enter customer name",
 )
 
+st.session_state.customer_name = customer_name.strip()
+
+
 # ============================================================
-# LEFT SIDE
-# 01. MDC TYPE & CONFIGURATION
-# 02. PDU SELECTION
+# 2. MDC TYPE & CONFIGURATION
 # ============================================================
 
-with main_left:
+section_header("2. MDC TYPE & CONFIGURATION")
 
-    # ========================================================
-    # 01. MDC TYPE & CONFIGURATION
-    # ========================================================
+mdc_type = st.radio(
+    "MDC Type",
+    ["Single Rack", "Multirack"],
+    horizontal=True,
+    index=0 if st.session_state.mdc_type == "Single Rack" else 1,
+)
 
-    with st.container(border=True):
+if mdc_type != st.session_state.mdc_type:
+    st.session_state.mdc_type = mdc_type
+    st.session_state.configuration = "Configuration 1"
+    st.session_state.accessory_qty = {}
+    st.session_state.pdu_qty = {}
+    st.session_state.configuration_id = generate_configuration_id()
+    st.session_state.configuration_saved = False
+    st.rerun()
 
-        st.markdown(
-            '<div class="mdc-card-heading">'
-            '<span class="mdc-number">01</span>'
-            '<span>MDC TYPE & CONFIGURATION</span>'
-            '</div>',
-            unsafe_allow_html=True,
-        )
+available = configs_df[
+    configs_df["MDC Type"] == st.session_state.mdc_type
+].copy()
 
-        # ----------------------------------------------------
-        # MDC TYPE
-        # ----------------------------------------------------
+labels = available["Configuration"].tolist()
 
-        mdc_type = st.radio(
-            "MDC Type",
-            ["Single Rack", "Multirack"],
-            horizontal=True,
-            index=(
-                0
-                if st.session_state.mdc_type == "Single Rack"
-                else 1
-            ),
-        )
+configuration_display_names = {
+    "Configuration 1":
+        "Configuration 1 - 1SR, 42U×800W×1200D, 3.5KW, W/O Dehumidifier",
+    "Configuration 2":
+        "Configuration 2 - 1SR, 42U×800W×1200D, 3.5KW, Dehumidifier",
+    "Configuration 3":
+        "Configuration 3 - 1SR, 42U×800W×1200D, 7KW, W/O Dehumidifier",
+    "Configuration 4":
+        "Configuration 4 - 1SR, 42U×800W×1200D, 7KW, Dehumidifier",
+}
 
-        if mdc_type != st.session_state.mdc_type:
+if labels:
+    st.session_state.configuration = st.selectbox(
+        "Select Configuration",
+        labels,
+        index=(
+            labels.index(st.session_state.configuration)
+            if st.session_state.configuration in labels
+            else 0
+        ),
+        format_func=lambda x: configuration_display_names.get(x, x),
+    )
 
-            st.session_state.mdc_type = mdc_type
-            st.session_state.configuration = "Configuration 1"
-            st.session_state.accessory_qty = {}
-            st.session_state.pdu_qty = {}
-            st.session_state.configuration_id = (
-                generate_configuration_id()
-            )
-            st.session_state.configuration_saved = False
 
-            st.rerun()
+# ============================================================
+# 3. PDU SELECTION
+# ============================================================
 
-        # ----------------------------------------------------
-        # CONFIGURATION
-        # ----------------------------------------------------
+section_header("3. PDU SELECTION")
 
-        available = configs_df[
-            configs_df["MDC Type"]
-            == st.session_state.mdc_type
+pdu_types = [
+    "None",
+    "Basic PDU",
+    "Metered PDU",
+    "Switched PDU",
+]
+
+col1, col2 = st.columns([2, 5])
+
+with col1:
+    selected_pdu_type = st.selectbox(
+        "PDU Type",
+        pdu_types,
+        index=0,
+        key="pdu_type_selection",
+    )
+
+with col2:
+    if selected_pdu_type != "None":
+        type_mapping = {
+            "Basic PDU": "BASIC",
+            "Metered PDU": "METERED",
+            "Switched PDU": "SWITCHED",
+        }
+
+        excel_pdu_type = type_mapping[selected_pdu_type]
+
+        filtered_pdus = pdus_df[
+            pdus_df["Type"].astype(str).str.strip().str.upper()
+            == excel_pdu_type
         ].copy()
 
-        labels = available["Configuration"].tolist()
-
-        configuration_display_names = {
-
-            "Configuration 1":
-                "Configuration 1 - "
-                "1SR, 42U×800W×1200D, 3.5KW, "
-                "W/O Dehumidifier",
-
-            "Configuration 2":
-                "Configuration 2 - "
-                "1SR, 42U×800W×1200D, 3.5KW, "
-                "Dehumidifier",
-
-            "Configuration 3":
-                "Configuration 3 - "
-                "1SR, 42U×800W×1200D, 7KW, "
-                "W/O Dehumidifier",
-
-            "Configuration 4":
-                "Configuration 4 - "
-                "1SR, 42U×800W×1200D, 7KW, "
-                "Dehumidifier",
-        }
-
-        if labels:
-
-            st.session_state.configuration = st.selectbox(
-                "Select Configuration",
-                labels,
-                index=(
-                    labels.index(
-                        st.session_state.configuration
-                    )
-                    if st.session_state.configuration in labels
-                    else 0
-                ),
-                format_func=lambda x:
-                    configuration_display_names.get(x, x),
-            )
-
-
-    # ========================================================
-    # 02. PDU SELECTION
-    # ========================================================
-
-    with st.container(border=True):
-
-        st.markdown(
-            '<div class="mdc-card-heading">'
-            '<span class="mdc-number">02</span>'
-            '<span>PDU SELECTION</span>'
-            '</div>',
-            unsafe_allow_html=True,
-        )
-
-        # ----------------------------------------------------
-        # PDU TYPES FROM EXCEL
-        # ----------------------------------------------------
-
-        pdu_type_display = {
-            "BASIC": "Basic PDU",
-            "METERED": "Metered PDU",
-            "SWITCHED": "Switched PDU",
-            "MANAGED": "Managed PDU",
-        }
-
-        excel_pdu_types = []
-
-        if not pdus_df.empty:
-
-            excel_pdu_types = [
-                x
-                for x in (
-                    pdus_df["Type"]
-                    .astype(str)
-                    .str.strip()
-                    .str.upper()
-                    .unique()
-                    .tolist()
-                )
-                if x
+        if not filtered_pdus.empty:
+            pdu_options = [
+                f'{r["Part Code"]} — {r["Description"]}'
+                for _, r in filtered_pdus.iterrows()
             ]
 
-        pdu_types = ["None"] + [
-            pdu_type_display.get(
-                x,
-                f"{x.title()} PDU"
-            )
-            for x in excel_pdu_types
-        ]
-
-        # ----------------------------------------------------
-        # PDU TYPE + MODEL + QUANTITY
-        # ----------------------------------------------------
-
-        pdu_col1, pdu_col2, pdu_col3 = st.columns(
-            [1.0, 2.0, 0.55],
-            gap="small"
-        )
-
-        # ----------------------------------------------------
-        # PDU TYPE
-        # ----------------------------------------------------
-
-        with pdu_col1:
-
-            previous_pdu_type = st.session_state.get(
-                "pdu_type_selection",
-                "None"
+            selected_pdu = st.selectbox(
+                "Select PDU",
+                pdu_options,
+                index=0,
+                key="pdu_model_selection",
             )
 
-            if previous_pdu_type not in pdu_types:
-                previous_pdu_type = "None"
+            selected_index = pdu_options.index(selected_pdu)
+            selected_row = filtered_pdus.iloc[selected_index]
+            part = clean_text(selected_row["Part Code"])
 
-            selected_pdu_type = st.selectbox(
-                "PDU Type",
-                pdu_types,
-                index=pdu_types.index(
-                    previous_pdu_type
-                ),
-                key="pdu_type_selection",
+            st.session_state.pdu_qty = {part: 1}
+
+            st.caption(
+                f'C13: {numeric(selected_row["C13"]):g} | '
+                f'C19: {numeric(selected_row["C19"]):g} | '
+                f'Excel Unit Price: {money(selected_row["Unit Cost"])}'
             )
-
-        # ----------------------------------------------------
-        # PDU MODEL
-        # ----------------------------------------------------
-
-        selected_part = None
-
-        with pdu_col2:
-
-            if selected_pdu_type != "None":
-
-                reverse_type = {
-                    v: k
-                    for k, v in pdu_type_display.items()
-                }
-
-                excel_pdu_type = reverse_type.get(
-                    selected_pdu_type,
-                    selected_pdu_type
-                    .replace(" PDU", "")
-                    .upper(),
-                )
-
-                filtered_pdus = pdus_df[
-                    pdus_df["Type"]
-                    .astype(str)
-                    .str.strip()
-                    .str.upper()
-                    == excel_pdu_type
-                ].copy()
-
-                if not filtered_pdus.empty:
-
-                    pdu_options = [
-                        f'{clean_text(r["Part Code"])} — '
-                        f'{clean_text(r["Description"])}'
-                        for _, r in filtered_pdus.iterrows()
-                    ]
-
-                    old_selection = (
-                        st.session_state.get(
-                            "pdu_model_selection"
-                        )
-                    )
-
-                    pdu_index = (
-                        pdu_options.index(old_selection)
-                        if old_selection in pdu_options
-                        else 0
-                    )
-
-                    selected_pdu = st.selectbox(
-                        "Select PDU",
-                        pdu_options,
-                        index=pdu_index,
-                        key="pdu_model_selection",
-                    )
-
-                    selected_row = filtered_pdus.iloc[
-                        pdu_options.index(selected_pdu)
-                    ]
-
-                    selected_part = clean_text(
-                        selected_row["Part Code"]
-                    )
-
-                else:
-
-                    st.warning(
-                        f"No {selected_pdu_type} options "
-                        "found in MDC_Master_V1.xlsx."
-                    )
-
-        # ----------------------------------------------------
-        # PDU QUANTITY
-        # ----------------------------------------------------
-
-        with pdu_col3:
-
-            if selected_part:
-
-                current_pdu_qty = int(
-                    numeric(
-                        st.session_state.pdu_qty.get(
-                            selected_part,
-                            1
-                        )
-                    )
-                )
-
-                pdu_quantity = st.number_input(
-                    "Qty",
-                    min_value=1,
-                    max_value=999,
-                    step=1,
-                    value=current_pdu_qty,
-                    key=f"pdu_quantity_{selected_part}",
-                )
-
-                st.session_state.pdu_qty = {
-                    selected_part: pdu_quantity
-                }
-
-            else:
-
-                st.number_input(
-                    "Qty",
-                    min_value=1,
-                    max_value=999,
-                    value=1,
-                    step=1,
-                    disabled=True,
-                    key="pdu_quantity_none",
-                )
-
-                st.session_state.pdu_qty = {}
+        else:
+            st.session_state.pdu_qty = {}
+            st.warning(
+                f"No {selected_pdu_type} options found in MDC_Master_V1.xlsx."
+            )
+    else:
+        st.session_state.pdu_qty = {}
 
 
 # ============================================================
-# RIGHT SIDE
-# 03. OTHER ACCESSORIES
+# 4. OTHER ACCESSORIES
 # ============================================================
 
-with main_right:
+section_header("4. OTHER ACCESSORIES")
 
-    with st.container(border=True):
+# Build accessory lookup.
+optional_lookup = {
+    clean_text(r["Part Code"]): r
+    for _, r in accessories_df.iterrows()
+    if clean_text(r["Part Code"])
+}
 
-        st.markdown(
-            '<div class="mdc-card-heading">'
-            '<span class="mdc-number">03</span>'
-            '<span>OTHER ACCESSORIES</span>'
-            '</div>',
-            unsafe_allow_html=True,
-        )
-# # ============================================================
-# # LEFT PANEL
-# # 01 MDC TYPE & CONFIGURATION
-# # 02 PDU SELECTION
-# # ============================================================
 
-# with main_left:
+# ---------------- FIRE SUPPRESSION ----------------
 
-#     # ========================================================
-#     # 01. MDC TYPE & CONFIGURATION
-#     # ========================================================
+st.subheader("4.1 Fire Suppression")
 
-#     with st.container(border=True):
+# Read FIRE rows directly from the Excel optional-items table.
+fire_rows = accessories_df[
+    accessories_df["Part Code"].astype(str).str.upper().str.contains("FIRE", na=False)
+    | accessories_df["Description"].astype(str).str.upper().str.contains("FIRE", na=False)
+].copy()
 
-#         st.markdown(
-#             '<div class="mdc-card-heading">'
-#             '<span class="mdc-number">01</span>'
-#             '<span>MDC TYPE &amp; CONFIGURATION</span>'
-#             '</div>',
-#             unsafe_allow_html=True,
-#         )
-
-#         mdc_type = st.radio(
-#             "MDC Type",
-#             ["Single Rack", "Multirack"],
-#             horizontal=True,
-#             index=(
-#                 0
-#                 if st.session_state.mdc_type == "Single Rack"
-#                 else 1
-#             ),
-#             key="mdc_type_selection",
-#         )
-
-#         if mdc_type != st.session_state.mdc_type:
-
-#             st.session_state.mdc_type = mdc_type
-#             st.session_state.configuration = "Configuration 1"
-#             st.session_state.accessory_qty = {}
-#             st.session_state.pdu_qty = {}
-#             st.session_state.configuration_id = generate_configuration_id()
-#             st.session_state.configuration_saved = False
-
-#             st.rerun()
-
-#         available = configs_df[
-#             configs_df["MDC Type"] == st.session_state.mdc_type
-#         ].copy()
-
-#         labels = available["Configuration"].tolist()
-
-#         configuration_display_names = {
-#             "Configuration 1":
-#                 "Configuration 1 - 1SR, 42U×800W×1200D, 3.5KW, W/O Dehumidifier",
-
-#             "Configuration 2":
-#                 "Configuration 2 - 1SR, 42U×800W×1200D, 3.5KW, Dehumidifier",
-
-#             "Configuration 3":
-#                 "Configuration 3 - 1SR, 42U×800W×1200D, 7KW, W/O Dehumidifier",
-
-#             "Configuration 4":
-#                 "Configuration 4 - 1SR, 42U×800W×1200D, 7KW, Dehumidifier",
-#         }
-
-#         if labels:
-
-#             st.session_state.configuration = st.selectbox(
-#                 "Select Configuration",
-#                 labels,
-
-#                 index=(
-#                     labels.index(
-#                         st.session_state.configuration
-#                     )
-#                     if st.session_state.configuration in labels
-#                     else 0
-#                 ),
-
-#                 format_func=lambda x:
-#                     configuration_display_names.get(x, x),
-
-#                 key="configuration_selection",
-#             )
-
-
-#     # ========================================================
-# # 02. PDU SELECTION
-# # ========================================================
-
-# with st.container(border=True):
-
-#     st.markdown(
-#         '<div class="mdc-card-heading">'
-#         '<span class="mdc-number">02</span>'
-#         '<span>PDU SELECTION</span>'
-#         '</div>',
-#         unsafe_allow_html=True,
-#     )
-
-#     # ----------------------------------------------------
-#     # PDU TYPES FROM EXCEL
-#     # ----------------------------------------------------
-
-#     pdu_type_display = {
-#         "BASIC": "Basic PDU",
-#         "METERED": "Metered PDU",
-#         "SWITCHED": "Switched PDU",
-#         "MANAGED": "Managed PDU",
-#     }
-
-#     excel_pdu_types = []
-
-#     if not pdus_df.empty:
-#         excel_pdu_types = [
-#             x
-#             for x in (
-#                 pdus_df["Type"]
-#                 .astype(str)
-#                 .str.strip()
-#                 .str.upper()
-#                 .unique()
-#                 .tolist()
-#             )
-#             if x
-#         ]
-
-#     pdu_types = ["None"] + [
-#         pdu_type_display.get(
-#             x,
-#             f"{x.title()} PDU"
-#         )
-#         for x in excel_pdu_types
-#     ]
-
-#     # ----------------------------------------------------
-#     # PDU TYPE + MODEL + QUANTITY
-#     # ----------------------------------------------------
-
-#     pdu_col1, pdu_col2, pdu_col3 = st.columns(
-#         [1.0, 2.0, 0.55],
-#         gap="small"
-#     )
-
-#     # ----------------------------------------------------
-#     # PDU TYPE
-#     # ----------------------------------------------------
-
-#     with pdu_col1:
-
-#         previous_pdu_type = st.session_state.get(
-#             "pdu_type_selection",
-#             "None"
-#         )
-
-#         if previous_pdu_type not in pdu_types:
-#             previous_pdu_type = "None"
-
-#         selected_pdu_type = st.selectbox(
-#             "PDU Type",
-#             pdu_types,
-#             index=pdu_types.index(previous_pdu_type),
-#             key="pdu_type_selection",
-#         )
-
-#     # ----------------------------------------------------
-#     # PDU MODEL
-#     # ----------------------------------------------------
-
-#     selected_part = None
-
-#     with pdu_col2:
-
-#         if selected_pdu_type != "None":
-
-#             reverse_type = {
-#                 v: k
-#                 for k, v in pdu_type_display.items()
-#             }
-
-#             excel_pdu_type = reverse_type.get(
-#                 selected_pdu_type,
-#                 selected_pdu_type
-#                 .replace(" PDU", "")
-#                 .upper(),
-#             )
-
-#             filtered_pdus = pdus_df[
-#                 pdus_df["Type"]
-#                 .astype(str)
-#                 .str.strip()
-#                 .str.upper()
-#                 == excel_pdu_type
-#             ].copy()
-
-#             if not filtered_pdus.empty:
-
-#                 pdu_options = [
-#                     f'{clean_text(r["Part Code"])} — '
-#                     f'{clean_text(r["Description"])}'
-#                     for _, r in filtered_pdus.iterrows()
-#                 ]
-
-#                 old_selection = st.session_state.get(
-#                     "pdu_model_selection"
-#                 )
-
-#                 pdu_index = (
-#                     pdu_options.index(old_selection)
-#                     if old_selection in pdu_options
-#                     else 0
-#                 )
-
-#                 selected_pdu = st.selectbox(
-#                     "Select PDU",
-#                     pdu_options,
-#                     index=pdu_index,
-#                     key="pdu_model_selection",
-#                 )
-
-#                 selected_row = filtered_pdus.iloc[
-#                     pdu_options.index(selected_pdu)
-#                 ]
-
-#                 selected_part = clean_text(
-#                     selected_row["Part Code"]
-#                 )
-
-#             else:
-
-#                 st.warning(
-#                     f"No {selected_pdu_type} options found "
-#                     "in MDC_Master_V1.xlsx."
-#                 )
-
-#     # ----------------------------------------------------
-#     # PDU QUANTITY — COMPACT
-#     # ----------------------------------------------------
-
-#     with pdu_col3:
-
-#         if selected_part:
-
-#             current_pdu_qty = int(
-#                 numeric(
-#                     st.session_state.pdu_qty.get(
-#                         selected_part,
-#                         1
-#                     )
-#                 )
-#             )
-
-#             pdu_quantity = st.number_input(
-#                 "Qty",
-#                 min_value=1,
-#                 max_value=999,
-#                 step=1,
-#                 value=current_pdu_qty,
-#                 key=f"pdu_quantity_{selected_part}",
-#             )
-
-#             st.session_state.pdu_qty = {
-#                 selected_part: pdu_quantity
-#             }
-
-#         else:
-
-#             st.number_input(
-#                 "Qty",
-#                 min_value=1,
-#                 max_value=999,
-#                 value=1,
-#                 step=1,
-#                 disabled=True,
-#                 key="pdu_quantity_none",
-#             )
-
-#             st.session_state.pdu_qty = {}
-# # ============================================================
-# # RIGHT PANEL
-# # 03 OTHER ACCESSORIES
-# # ============================================================
-
-# with main_right:
-
-#     with st.container(border=True):
-
-#         st.markdown(
-#             '<div class="mdc-card-heading">'
-#             '<span class="mdc-number">03</span>'
-#             '<span>OTHER ACCESSORIES</span>'
-#             '</div>',
-#             unsafe_allow_html=True,
-#         )
-
-
-        # ====================================================
-        # ACCESSORY LOOKUP FROM EXCEL
-        # ====================================================
-
-        optional_lookup = {
-            clean_text(r["Part Code"]): r
-            for _, r in accessories_df.iterrows()
-            if clean_text(r["Part Code"])
-        }
-
-
-        def excel_optional_rows(keyword=None):
-            """Find optional items by Excel part number/description."""
-
-            if accessories_df.empty:
-                return pd.DataFrame()
-
-            if not keyword:
-                return accessories_df.copy()
-
-            key = str(keyword).upper()
-
-            mask = (
-                accessories_df["Part Code"]
-                .astype(str)
-                .str.upper()
-                .str.contains(
-                    key,
-                    na=False
-                )
-                |
-                accessories_df["Description"]
-                .astype(str)
-                .str.upper()
-                .str.contains(
-                    key,
-                    na=False
-                )
-            )
-
-            return accessories_df[mask].copy()
-
-
-        def remove_rows(rows):
-
-            for _, r in rows.iterrows():
-
-                part = clean_text(
-                    r["Part Code"]
-                )
-
-                if part:
-                    st.session_state.accessory_qty.pop(
-                        part,
-                        None
-                    )
-
-
-        def add_rows(rows, quantity=1):
-
-            for _, r in rows.iterrows():
-
-                part = clean_text(
-                    r["Part Code"]
-                )
-
-                if part:
-
-                    st.session_state.accessory_qty[
-                        part
-                    ] = quantity
-
-# ====================================================
-# FIRE SUPPRESSION
-# ====================================================
-
-fire_rows = excel_optional_rows("FIRE")
-
-# ----------------------------------------------------
-# EXTERNAL FIRE SUPPRESSION
-# ----------------------------------------------------
+# Explicit part numbers are used because the master data does not
+# necessarily contain the words INTERNAL / IN-RACK in the description.
 external_fire = fire_rows[
-    fire_rows["Description"]
-    .astype(str)
-    .str.upper()
-    .str.contains("EXTERNAL", na=False)
+    fire_rows["Part Code"].astype(str).str.strip() == "801073203"
 ].copy()
 
-# ----------------------------------------------------
-# INTERNAL / RACK-MOUNT FIRE SUPPRESSION
-# ----------------------------------------------------
-# Everything returned by "FIRE" that is NOT external
-# is treated as the internal/rack-mount option.
 internal_fire = fire_rows[
-    ~fire_rows["Description"]
-    .astype(str)
-    .str.upper()
-    .str.contains("EXTERNAL", na=False)
+    fire_rows["Part Code"].astype(str).str.strip() == "HRD-XH1C"
 ].copy()
 
-
-# ----------------------------------------------------
-# DETERMINE CURRENT SELECTION
-# ----------------------------------------------------
 fire_current = "None"
 
-external_selected = (
-    not external_fire.empty
-    and any(
-        numeric(
-            st.session_state.accessory_qty.get(
-                clean_text(p),
-                0
-            )
-        ) > 0
-        for p in external_fire["Part Code"]
-    )
-)
-
-internal_selected = (
-    not internal_fire.empty
-    and any(
-        numeric(
-            st.session_state.accessory_qty.get(
-                clean_text(p),
-                0
-            )
-        ) > 0
-        for p in internal_fire["Part Code"]
-    )
-)
-
-if external_selected:
+if any(
+    numeric(st.session_state.accessory_qty.get(clean_text(p), 0)) > 0
+    for p in external_fire["Part Code"]
+):
     fire_current = "External"
-elif internal_selected:
+elif any(
+    numeric(st.session_state.accessory_qty.get(clean_text(p), 0)) > 0
+    for p in internal_fire["Part Code"]
+):
     fire_current = "Internal"
 
-
-# ----------------------------------------------------
-# FIRE SUPPRESSION SELECTION
-# ----------------------------------------------------
 fire_selection = st.radio(
     "Fire Suppression",
     ["None", "External", "Internal"],
-
-    index=[
-        "None",
-        "External",
-        "Internal"
-    ].index(fire_current),
-
+    index=["None", "External", "Internal"].index(fire_current),
     horizontal=True,
-
     key="fire_suppression_selection",
 )
 
+# Remove previous fire selection first.
+for fire_df in (external_fire, internal_fire):
+    for _, r in fire_df.iterrows():
+        part = clean_text(r["Part Code"])
+        if part:
+            st.session_state.accessory_qty.pop(part, None)
 
-# ----------------------------------------------------
-# REMOVE PREVIOUS FIRE SELECTION
-# ----------------------------------------------------
-remove_rows(external_fire)
-remove_rows(internal_fire)
-
-
-# ----------------------------------------------------
-# ADD NEW FIRE SELECTION
-# ----------------------------------------------------
 if fire_selection == "External":
-
-    add_rows(
-        external_fire,
-        1
-    )
+    for _, r in external_fire.iterrows():
+        part = clean_text(r["Part Code"])
+        if part:
+            st.session_state.accessory_qty[part] = 1
 
 elif fire_selection == "Internal":
+    for _, r in internal_fire.iterrows():
+        part = clean_text(r["Part Code"])
+        if part:
+            st.session_state.accessory_qty[part] = 1
 
-    add_rows(
-        internal_fire,
-        1
+
+# ---------------- CAMERA ----------------
+
+st.subheader("4.2 Camera")
+
+# CAMERA_PARTS is maintained from the Excel master mapping above.
+camera_parts_available = [
+    part for part in CAMERA_PARTS
+    if part in optional_lookup
+]
+
+camera_current_qty = max(
+    [
+        int(numeric(st.session_state.accessory_qty.get(part, 0)))
+        for part in camera_parts_available
+    ]
+    or [0]
+)
+
+camera_col1, camera_col2 = st.columns(
+    [5.5, 1.8],
+    vertical_alignment="center"
+)
+
+with camera_col1:
+    camera_selected = st.checkbox(
+        "Camera",
+        value=camera_current_qty > 0,
+        key="camera_system_checkbox",
     )
-        # ====================================================
-        # CAMERA
-        # ====================================================
 
-        # st.markdown(
-        #     '<div class="mdc-mini-heading">'
-        #     'Camera'
-        #     '</div>',
-        #     unsafe_allow_html=True
-        # )
+with camera_col2:
+    camera_qty = st.number_input(
+        "Quantity",
+        min_value=1,
+        max_value=999,
+        step=1,
+        value=camera_current_qty if camera_current_qty > 0 else 1,
+        key="camera_system_quantity",
+        disabled=not camera_selected,
+    )
 
-        camera_rows = excel_optional_rows(
-            "CAMERA"
+if camera_selected:
+    for part in camera_parts_available:
+        st.session_state.accessory_qty[part] = int(camera_qty)
+else:
+    for part in camera_parts_available:
+        st.session_state.accessory_qty.pop(part, None)
+
+
+# ---------------- OTHER OPTIONAL ACCESSORIES ----------------
+
+for part, display_name in OTHER_OPTIONAL_PARTS:
+    if part not in optional_lookup:
+        continue
+
+    r = optional_lookup[part]
+
+    col1, col2 = st.columns([5.5, 1.8], vertical_alignment="center")
+
+    with col1:
+        selected = st.checkbox(
+            display_name,
+            value=(
+                st.session_state.accessory_qty.get(part, 0) > 0
+            ),
+            key=f"other_acc_{part}",
         )
 
-        camera_parts = (
-            camera_rows["Part Code"]
-            .astype(str)
-            .str.strip()
-            .tolist()
-            if not camera_rows.empty
-            else []
-        )
-
-
-        camera_current = (
-            "Yes"
-            if any(
-                numeric(
-                    st.session_state.accessory_qty.get(
-                        p,
-                        0
-                    )
-                ) > 0
-                for p in camera_parts
+    with col2:
+        if selected:
+            qty = st.number_input(
+                "Quantity",
+                min_value=1,
+                max_value=999,
+                step=1,
+                value=int(
+                    st.session_state.accessory_qty.get(part, 1)
+                ),
+                key=f"other_qty_{part}",
             )
-            else "No"
-        )
-
-
-        camera_selection = st.radio(
-            "Camera",
-            ["Yes", "No"],
-
-            index=[
-                "Yes",
-                "No"
-            ].index(camera_current),
-
-            horizontal=True,
-
-            key="camera_system_selection",
-        )
-
-
-        if camera_selection == "Yes":
-
-            add_rows(
-                camera_rows,
-                1
-            )
-
+            st.session_state.accessory_qty[part] = qty
         else:
+            st.session_state.accessory_qty.pop(part, None)
 
-            remove_rows(
-                camera_rows
-            )
-
-
- # ====================================================
-        # OTHER OPTIONAL ACCESSORIES
-        # ====================================================
-
-        # st.markdown(
-        #     '<div class="mdc-mini-heading">'
-        #     'Optional Accessories'
-        #     '</div>',
-        #     unsafe_allow_html=True
-        # )
-
-        other_accessory_keywords = [
-            (
-                "KEYBOARD",
-                "Rotating Keyboard Tray"
-            ),
-            (
-                "CABLE MANAGER",
-                "Cable Manager"
-            ),
-            (
-                "TOP CABLE TRAY",
-                "Top Cable Tray"
-            ),
-            (
-                "BRUSH PANEL",
-                "Brush Panel"
-            ),
-        ]
-
-
-        for keyword, fallback_label in other_accessory_keywords:
-
-            rows = excel_optional_rows(
-                keyword
-            )
-
-            if rows.empty:
-                continue
-
-
-            for _, r in rows.iterrows():
-
-                part = clean_text(
-                    r["Part Code"]
-                )
-
-                description = clean_text(
-                    r["Description"]
-                )
-
-                if not part:
-                    continue
-
-
-                current_qty = int(
-                    numeric(
-                        st.session_state.accessory_qty.get(
-                            part,
-                            0
-                        )
-                    )
-                )
-
-
-                acc_col1, acc_col2 = st.columns(
-                    [4.5, 1.15],
-                    gap="small",
-                    vertical_alignment="center"
-                )
-
-
-                with acc_col1:
-
-                    selected = st.checkbox(
-                        description
-                        if description
-                        else fallback_label,
-
-                        value=current_qty > 0,
-
-                        key=f"other_acc_{part}",
-                    )
-
-
-                with acc_col2:
-
-                    if selected:
-
-                        qty = st.number_input(
-                            "Qty",
-
-                            min_value=1,
-                            max_value=999,
-                            step=1,
-
-                            value=(
-                                current_qty
-                                if current_qty > 0
-                                else 1
-                            ),
-
-                            key=f"other_qty_{part}",
-
-                            label_visibility="collapsed",
-                        )
-
-                        st.session_state.accessory_qty[
-                            part
-                        ] = qty
-
-                    else:
-
-                        st.session_state.accessory_qty.pop(
-                            part,
-                            None
-                        )
-
-
-        # # ====================================================
-        # # OTHER OPTIONAL ACCESSORIES
-        # # ====================================================
-
-        # # st.markdown(
-        # #     '<div class="mdc-mini-heading">'
-        # #     'Optional Accessories'
-        # #     '</div>',
-        # #     unsafe_allow_html=True
-        # # )
-
-        # other_accessory_keywords = [
-        #     (
-        #         "KEYBOARD",
-        #         "Rotating Keyboard Tray"
-        #     ),
-        #     (
-        #         "CABLE MANAGER",
-        #         "Cable Manager"
-        #     ),
-        #     (
-        #         "TOP CABLE TRAY",
-        #         "Top Cable Tray"
-        #     ),
-        #     (
-        #         "BRUSH PANEL",
-        #         "Brush Panel"
-        #     ),
-        # ]
-
-
-        # for keyword, fallback_label in other_accessory_keywords:
-
-        #     rows = excel_optional_rows(
-        #         keyword
-        #     )
-
-        #     if rows.empty:
-        #         continue
-
-
-        #     for _, r in rows.iterrows():
-
-        #         part = clean_text(
-        #             r["Part Code"]
-        #         )
-
-        #         description = clean_text(
-        #             r["Description"]
-        #         )
-
-        #         if not part:
-        #             continue
-
-
-        #         current_qty = int(
-        #             numeric(
-        #                 st.session_state.accessory_qty.get(
-        #                     part,
-        #                     0
-        #                 )
-        #             )
-        #         )
-
-
-        #         acc_col1, acc_col2 = st.columns(
-        #             [4.5, 1.15],
-        #             gap="small",
-        #             vertical_alignment="center"
-        #         )
-
-
-        #         with acc_col1:
-
-        #             selected = st.checkbox(
-        #                 description
-        #                 if description
-        #                 else fallback_label,
-
-        #                 value=current_qty > 0,
-
-        #                 key=f"other_acc_{part}",
-        #             )
-
-
-        #         with acc_col2:
-
-        #             if selected:
-
-        #                 qty = st.number_input(
-        #                     "Qty",
-
-        #                     min_value=1,
-        #                     max_value=999,
-        #                     step=1,
-
-        #                     value=(
-        #                         current_qty
-        #                         if current_qty > 0
-        #                         else 1
-        #                     ),
-
-        #                     key=f"other_qty_{part}",
-
-        #                     label_visibility="collapsed",
-        #                 )
-
-        #                 st.session_state.accessory_qty[
-        #                     part
-        #                 ] = qty
-
-        #             else:
-
-        #                 st.session_state.accessory_qty.pop(
-        #                     part,
-        #                     None
-        #                 )
-# ============================================================
-# 5. FINAL BOQ
 
 # ============================================================
 # 5. FINAL BOQ
@@ -3863,14 +1718,32 @@ else:
 
 st.html(f"""
 <div style="
-    display:flex;justify-content:space-between;align-items:center;gap:15px;
-    background:#003B71;color:white;padding:7px 12px;border-radius:5px;
-    margin:10px 0 8px 0;
+    display:flex;
+    justify-content:space-between;
+    align-items:center;
+    gap:20px;
+    background:linear-gradient(135deg,#005EB8,#003B71);
+    color:white;
+    padding:10px 16px;
+    border-radius:8px;
+    margin:20px 0 15px 0;
 ">
-    <div style="font-size:14px;font-weight:700;">5. FINAL BOQ</div>
-    <div style="display:flex;align-items:center;gap:8px;white-space:nowrap;">
-        <span style="font-size:11px;font-weight:700;">FINAL SELLING PRICE</span>
-        <span style="font-size:16px;font-weight:700;">{money(final_selling_price)}</span>
+    <div style="font-size:18px;font-weight:700;">
+        5. FINAL BOQ
+    </div>
+
+    <div style="
+        display:flex;
+        align-items:center;
+        gap:10px;
+        white-space:nowrap;
+    ">
+        <span style="font-size:13px;font-weight:500;">
+            FINAL SELLING PRICE
+        </span>
+        <span style="font-size:20px;font-weight:700;">
+            {money(final_selling_price)}
+        </span>
     </div>
 </div>
 """)
@@ -3971,7 +1844,7 @@ if not bom.empty:
         border-collapse:collapse;
         table-layout:fixed;
         font-family:Arial,sans-serif;
-        font-size:12px;
+        font-size:14px;
         border:1px solid #D9E1E8;
     }
 
@@ -3980,12 +1853,12 @@ if not bom.empty:
         color:#555;
         font-weight:600;
         text-align:left;
-        padding:7px 7px;
+        padding:12px 10px;
         border-bottom:1px solid #D9E1E8;
     }
 
     .final-structure-table td {
-        padding:6px 7px;
+        padding:11px 10px;
         border-bottom:1px solid #E5E7EB;
         color:#333;
         vertical-align:middle;
@@ -3996,18 +1869,27 @@ if not bom.empty:
         background:#003B71;
         color:white !important;
         font-weight:700;
-        font-size:13px;
+        font-size:16px;
         text-align:center !important;
-        padding:8px 7px;
+        padding:15px 10px;
+    }
+
+    .configuration-title-row td {
+        background:#005EB8;
+        color:white !important;
+        font-weight:700;
+        font-size:16px;
+        text-align:left !important;
+        padding:14px 12px;
     }
 
     .section-heading td {
         background:#005EB8;
         color:white !important;
         font-weight:700;
-        font-size:12px;
+        font-size:15px;
         text-align:center !important;
-        padding:7px 8px;
+        padding:12px 14px;
     }
 
     .serial {
@@ -4061,6 +1943,21 @@ if not bom.empty:
         </thead>
         <tbody>
     """
+
+    # First row: selected configuration title, read directly from Excel.
+    selected_config_title = ""
+    selected_config_record_row = selected_config_record()
+    if selected_config_record_row is not None:
+        selected_config_title = clean_text(
+            selected_config_record_row.get("Configuration Title", "")
+        )
+
+    if selected_config_title:
+        html += f"""
+        <tr class="configuration-title-row">
+            <td colspan="7">{selected_config_title}</td>
+        </tr>
+        """
 
     cooling_heading_added = False
     accessories_heading_added = False
@@ -4150,7 +2047,7 @@ if not bom.empty:
             <td colspan="6" style="
                 text-align:right;
                 font-weight:700;
-                padding:8px 7px;
+                padding:13px 10px;
                 background:#F7FBFF;
                 color:#003B71;
             ">
@@ -4171,6 +2068,11 @@ if not bom.empty:
 
     st.html(html)
 
+    st.caption(
+        "Unit Price = price read directly from MDC_Master_V1.xlsx. "
+        "Total Price = Excel Unit Price × Quantity. "
+        "Final Selling Price is calculated separately."
+    )
 else:
     st.info("No components selected for the current configuration.")
 
@@ -4180,7 +2082,7 @@ else:
 # ============================================================
 
 if is_internal:
-    section_header("6. COST SUMMARY — INTERNAL ONLY")
+    st.header("6. Cost Summary — Internal Only")
 
     a, b, c, d = st.columns(4)
 
@@ -4196,7 +2098,7 @@ if is_internal:
     with d:
         price_box("Total Cost", total_cost)
 
-    section_header("7. COST TO SELLING PRICE — INTERNAL ONLY")
+    st.header("7. Cost to Selling Price — Internal Only")
 
     p1, p2, p3, p4 = st.columns(4)
 
@@ -4267,7 +2169,7 @@ if is_internal:
 # 8. DOWNLOADS — EXCEL + PDF
 # ============================================================
 
-section_header("8. DOWNLOADS")
+st.header("8. Downloads")
 
 if not bom.empty:
     internal_cost_data = [
@@ -4280,6 +2182,8 @@ if not bom.empty:
         ["Freight", freight],
         ["Installation", installation],
         ["Final Selling Price", final_selling_price],
+        ["Warranty %", warranty_pct],
+        ["Warranty Amount", margin_price * warranty_pct / 100],
     ]
 
     sales_excel = excel_bytes(
@@ -4306,7 +2210,7 @@ if not bom.empty:
             final_price=final_selling_price,
         )
 
-        st.markdown("**Internal – MDC**")
+        st.subheader("Internal – MDC")
         i1, i2 = st.columns(2)
 
         with i1:
@@ -4329,7 +2233,7 @@ if not bom.empty:
                 on_click=handle_excel_download,
             )
 
-        st.markdown("**Sales**")
+        st.subheader("Sales")
 
     s1, s2 = st.columns(2)
 
@@ -4355,91 +2259,95 @@ if not bom.empty:
 else:
     st.info("Select a configuration with available BOM data before downloading.")
 
-# # ============================================================
 
-# # 9. SAVE CONFIGURATION
-# # ============================================================
+# ============================================================
 
-# section_header("9. SAVE CONFIGURATION")
+# 9. SAVE CONFIGURATION
+# ============================================================
 
-# save_col1, save_col2 = st.columns([2, 5])
+st.header("9. Save Configuration")
 
-# with save_col1:
-#     if st.button(
-#         "💾 Save Configuration",
-#         use_container_width=True,
-#         type="primary",
-#     ):
-#         current_margin_price = (
-#             total_cost / (1 - margin_pct / 100)
-#             if margin_pct < 100
-#             else 0.0
-#         )
+st.caption(
+    "Save the current MDC configuration for future tracking and reference."
+)
 
-#         current_final_price = (
-#             current_margin_price + freight + installation
-#         )
+save_col1, save_col2 = st.columns([2, 5])
 
-#         current_warranty_amount = (
-#             current_margin_price * warranty_pct / 100
-#         )
+with save_col1:
+    if st.button(
+        "💾 Save Configuration",
+        use_container_width=True,
+        type="primary",
+    ):
+        current_margin_price = (
+            total_cost / (1 - margin_pct / 100)
+            if margin_pct < 100
+            else 0.0
+        )
 
-#         save_configuration(
-#             configuration_id=st.session_state.configuration_id,
-#             bom=bom_with_price,
-#             base_cost=base_cost,
-#             optional_cost=optional_cost,
-#             pdu_cost=pdu_cost,
-#             total_cost=total_cost,
-#             margin_pct=margin_pct,
-#             freight=freight,
-#             installation=installation,
-#             warranty_pct=warranty_pct,
-#             margin_price=current_margin_price,
-#             final_selling_price=current_final_price,
-#             warranty_amount=current_warranty_amount,
-#         )
+        current_final_price = (
+            current_margin_price + freight + installation
+        )
 
-#         st.session_state.configuration_saved = True
+        current_warranty_amount = (
+            current_margin_price * warranty_pct / 100
+        )
 
-#         st.success(
-#             "Configuration saved successfully."
-#         )
+        save_configuration(
+            configuration_id=st.session_state.configuration_id,
+            bom=bom_with_price,
+            base_cost=base_cost,
+            optional_cost=optional_cost,
+            pdu_cost=pdu_cost,
+            total_cost=total_cost,
+            margin_pct=margin_pct,
+            freight=freight,
+            installation=installation,
+            warranty_pct=warranty_pct,
+            margin_price=current_margin_price,
+            final_selling_price=current_final_price,
+            warranty_amount=current_warranty_amount,
+        )
+
+        st.session_state.configuration_saved = True
+
+        st.success(
+            "Configuration saved successfully."
+        )
 
 
-# # ============================================================
-# # 10. CONFIGURATION HISTORY
-# # INTERNAL USERS ONLY
-# # ============================================================
+# ============================================================
+# 10. CONFIGURATION HISTORY
+# INTERNAL USERS ONLY
+# ============================================================
 
-# if is_internal:
-#     section_header("10. CONFIGURATION HISTORY")
+if is_internal:
+    st.header("10. Configuration History")
 
-#     conn = sqlite3.connect(TRACKING_DB)
+    conn = sqlite3.connect(TRACKING_DB)
 
-#     history_df = pd.read_sql_query(
-#         """
-#         SELECT
-#             COALESCE(NULLIF(user_code, ''), '—') AS "User Code",
-#             customer_name AS "Customer Name",
-#             DATE(created_at) AS "Date"
-#         FROM configurations
-#         ORDER BY id DESC
-#         """,
-#         conn,
-#     )
+    history_df = pd.read_sql_query(
+        """
+        SELECT
+            COALESCE(NULLIF(user_code, ''), '—') AS "User Code",
+            customer_name AS "Customer Name",
+            DATE(created_at) AS "Date"
+        FROM configurations
+        ORDER BY id DESC
+        """,
+        conn,
+    )
 
-#     conn.close()
+    conn.close()
 
-#     if not history_df.empty:
-#         st.dataframe(
-#             history_df,
-#             use_container_width=True,
-#             hide_index=True,
-#             height=220,
-#         )
-#     else:
-#         st.info("No saved configurations available yet.")
+    if not history_df.empty:
+        st.dataframe(
+            history_df,
+            use_container_width=True,
+            hide_index=True,
+        )
+    else:
+        st.info("No saved configurations available yet.")
 
 
 # ============================================================
@@ -4447,4 +2355,9 @@ else:
 # ============================================================
 
 st.divider()
-st.caption("Eaton MDC Solution Configurator")
+
+st.caption(
+    "Eaton MDC Solution Configurator | "
+    "Single Rack configurations use the supplied one-sheet "
+    "MDC_Master_V1.xlsx | Multirack configurations are XXX placeholders."
+)
