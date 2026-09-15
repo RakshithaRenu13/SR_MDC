@@ -1848,13 +1848,13 @@ with main_left:
                         pdu_options.index(selected_pdu)
                     ]
 
-                    selected_part = clean_text(
-                        selected_row["Part Code"]
-                    )
+                    # selected_part = clean_text(
+                    #     selected_row["Part Code"]
+                    # )
 
-                    st.session_state.pdu_qty = {
-                        selected_part: 1
-                    }
+                    # st.session_state.pdu_qty = {
+                    #     selected_part: 1
+                    # }
 
 
                     # ----------------------------------------
@@ -2115,12 +2115,12 @@ with main_right:
         # CAMERA
         # ====================================================
 
-        st.markdown(
-            '<div class="mdc-mini-heading">'
-            'Camera'
-            '</div>',
-            unsafe_allow_html=True
-        )
+        # st.markdown(
+        #     '<div class="mdc-mini-heading">'
+        #     'Camera'
+        #     '</div>',
+        #     unsafe_allow_html=True
+        # )
 
         camera_rows = excel_optional_rows(
             "CAMERA"
