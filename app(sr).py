@@ -3592,7 +3592,7 @@ elif fire_selection == "Internal":
             )
 
 
-        # ====================================================
+ # ====================================================
         # OTHER OPTIONAL ACCESSORIES
         # ====================================================
 
@@ -3709,6 +3709,125 @@ elif fire_selection == "Internal":
                             part,
                             None
                         )
+
+
+        # # ====================================================
+        # # OTHER OPTIONAL ACCESSORIES
+        # # ====================================================
+
+        # # st.markdown(
+        # #     '<div class="mdc-mini-heading">'
+        # #     'Optional Accessories'
+        # #     '</div>',
+        # #     unsafe_allow_html=True
+        # # )
+
+        # other_accessory_keywords = [
+        #     (
+        #         "KEYBOARD",
+        #         "Rotating Keyboard Tray"
+        #     ),
+        #     (
+        #         "CABLE MANAGER",
+        #         "Cable Manager"
+        #     ),
+        #     (
+        #         "TOP CABLE TRAY",
+        #         "Top Cable Tray"
+        #     ),
+        #     (
+        #         "BRUSH PANEL",
+        #         "Brush Panel"
+        #     ),
+        # ]
+
+
+        # for keyword, fallback_label in other_accessory_keywords:
+
+        #     rows = excel_optional_rows(
+        #         keyword
+        #     )
+
+        #     if rows.empty:
+        #         continue
+
+
+        #     for _, r in rows.iterrows():
+
+        #         part = clean_text(
+        #             r["Part Code"]
+        #         )
+
+        #         description = clean_text(
+        #             r["Description"]
+        #         )
+
+        #         if not part:
+        #             continue
+
+
+        #         current_qty = int(
+        #             numeric(
+        #                 st.session_state.accessory_qty.get(
+        #                     part,
+        #                     0
+        #                 )
+        #             )
+        #         )
+
+
+        #         acc_col1, acc_col2 = st.columns(
+        #             [4.5, 1.15],
+        #             gap="small",
+        #             vertical_alignment="center"
+        #         )
+
+
+        #         with acc_col1:
+
+        #             selected = st.checkbox(
+        #                 description
+        #                 if description
+        #                 else fallback_label,
+
+        #                 value=current_qty > 0,
+
+        #                 key=f"other_acc_{part}",
+        #             )
+
+
+        #         with acc_col2:
+
+        #             if selected:
+
+        #                 qty = st.number_input(
+        #                     "Qty",
+
+        #                     min_value=1,
+        #                     max_value=999,
+        #                     step=1,
+
+        #                     value=(
+        #                         current_qty
+        #                         if current_qty > 0
+        #                         else 1
+        #                     ),
+
+        #                     key=f"other_qty_{part}",
+
+        #                     label_visibility="collapsed",
+        #                 )
+
+        #                 st.session_state.accessory_qty[
+        #                     part
+        #                 ] = qty
+
+        #             else:
+
+        #                 st.session_state.accessory_qty.pop(
+        #                     part,
+        #                     None
+        #                 )
 # ============================================================
 # 5. FINAL BOQ
 
