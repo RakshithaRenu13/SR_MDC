@@ -1551,33 +1551,33 @@ is_internal = (
 # ============================================================
 # 1 + 2 / TOP SPLIT SCREEN
 # ============================================================
-left_top, right_top = st.columns(2, gap="medium")
+left_top = st.columns(2, gap="medium")
 
 # ============================================================
 # 1. CUSTOMER DETAILS
 # ============================================================
-with left_top:
-    with st.container(border=True):
-        st.markdown(
-            '<div class="mdc-card-heading">'
-            '<span class="mdc-number">01</span>'
-            '<span>CUSTOMER DETAILS</span>'
-            '</div>',
-            unsafe_allow_html=True,
-        )
+# with left_top:
+#     with st.container(border=True):
+#         st.markdown(
+#             '<div class="mdc-card-heading">'
+#             '<span class="mdc-number">01</span>'
+#             '<span>CUSTOMER DETAILS</span>'
+#             '</div>',
+#             unsafe_allow_html=True,
+#         )
 
-        customer_name = st.text_input(
-            "Customer Name",
-            value=st.session_state.customer_name,
-            key="customer_name_input",
-            placeholder="Enter customer name",
-        )
-        st.session_state.customer_name = customer_name.strip()
+#         customer_name = st.text_input(
+#             "Customer Name",
+#             value=st.session_state.customer_name,
+#             key="customer_name_input",
+#             placeholder="Enter customer name",
+#         )
+#         st.session_state.customer_name = customer_name.strip()
 
 # ============================================================
 # 2. MDC TYPE & CONFIGURATION
 # ============================================================
-with right_top:
+with left_top:
     with st.container(border=True):
         st.markdown(
             '<div class="mdc-card-heading">'
