@@ -1747,7 +1747,6 @@ if not bom.empty:
         )
 
     new_serial = []
-    main_mdc_found = False
     mdc_sub_no = 0
     cooling_started = False
     cooling_sub_no = 0
@@ -1755,18 +1754,9 @@ if not bom.empty:
 
     for idx, row in structure.iterrows():
         part_code = clean_text(row["Part Code"])
-        description = clean_text(row["Description"])
         component_type = clean_text(
             bom.loc[row.name, "Component Type"]
         )
-
-        if (
-            not main_mdc_found
-            and "SINGLE RACK MDC" in description.upper()
-        ):
-            new_serial.append("")
-            main_mdc_found = True
-            continue
 
         if part_code == "801029209":
             new_serial.append("1")
@@ -1837,14 +1827,6 @@ if not bom.empty:
         text-align:center !important;
         padding:15px 10px;
     }
-        .configuration-title-row td {
-        background:#003B71;
-        color:white !important;
-        font-weight:700;
-        font-size:16px;
-        text-align:left !important;
-        padding:14px 12px;
-    }
 
     .section-heading td {
         background:#005EB8;
@@ -1907,30 +1889,33 @@ if not bom.empty:
         <tbody>
     """
 
-    # --------------------------------------------------------
-    # SELECTED CONFIGURATION TITLE
-    # Read directly from the first row of the selected
-    # configuration block in MDC_Master_V1.xlsx.
-    # --------------------------------------------------------
-    selected_config = selected_config_record()
-
-    if selected_config is not None:
-        configuration_title = clean_text(
-            selected_config.get("Configuration Title", "")
-        )
-    else:
-        configuration_title = ""
-
-    if configuration_title:
-        html += f"""
-        <tr class="configuration-title-row">
-            <td colspan="7">{configuration_title}</td>
-        </tr>
-        """
-
     cooling_heading_added = False
     accessories_heading_added = False
     pdu_heading_added = False
+
+    # The first row inside FINAL BOQ is the configuration title read
+    # directly from the Excel master. It is displayed by itself in
+    # Eaton dark blue and does not contain S.No., Part Code, Qty, etc.
+    config_record = selected_config_record()
+    if config_record is not None:
+        final_boq_title = clean_text(config_record.get("Configuration Title"))
+    else:
+        final_boq_title = clean_text(st.session_state.configuration)
+
+    # Escape HTML-sensitive characters because the title comes from Excel.
+    final_boq_title = (
+        final_boq_title
+        .replace("&", "&amp;")
+        .replace("<", "&lt;")
+        .replace(">", "&gt;")
+        .replace('"', "&quot;")
+    )
+
+    html += f"""
+        <tr class="main-mdc-row">
+            <td colspan="7">{final_boq_title}</td>
+        </tr>
+    """
 
     for _, row in structure.iterrows():
         part_code = clean_text(row["Part Code"])
@@ -1953,17 +1938,6 @@ if not bom.empty:
         total_price_display = (
             money(total_price) if pd.notna(total_price) else "N/A"
         )
-
-        # if (
-        #     serial_no == ""
-        #     and "SINGLE RACK MDC" in description.upper()
-        # ):
-        #     html += f"""
-        #     <tr class="main-mdc-row">
-        #         <td colspan="7">{description}</td>
-        #     </tr>
-        #     """
-        #     continue
 
         if (
             part_code in cooling_part_codes
