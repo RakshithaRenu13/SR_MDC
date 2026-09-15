@@ -953,79 +953,217 @@ def customer_table():
     ], columns=["Field", "Value"])
 
 
-def excel_bytes(internal=False, bom=None, final_price=0.0, cost_data=None):
-    """Create ONE Excel worksheet containing customer details + BOQ + totals."""
+# ============================================================
+# EXCEL EXPORT
+# ============================================================
+
+def excel_bytes(
+    internal=False,
+    bom=None,
+    final_price=0.0,
+    cost_data=None
+):
+    """
+    Create ONE Excel worksheet containing:
+    - Customer details
+    - Final BOQ
+    - Price summary
+    - Final Selling Price
+
+    Component Type is intentionally NOT shown.
+    """
+
     output = BytesIO()
 
     if bom is None:
         bom = build_bom()
 
-    with pd.ExcelWriter(output, engine="openpyxl") as writer:
+    # --------------------------------------------------------
+    # GET FINAL PRICE SAFELY
+    # --------------------------------------------------------
+
+    try:
+        final_price = float(numeric(final_price))
+    except Exception:
+        final_price = 0.0
+
+    # --------------------------------------------------------
+    # EXCEL WRITER
+    # --------------------------------------------------------
+
+    with pd.ExcelWriter(
+        output,
+        engine="openpyxl"
+    ) as writer:
+
         wb = writer.book
+
+        # Create worksheet
         ws = wb.create_sheet("MDC BOQ")
         writer.sheets["MDC BOQ"] = ws
 
-        # ---------------- CUSTOMER / CONFIGURATION ----------------
+        # ====================================================
+        # CUSTOMER / CONFIGURATION DETAILS
+        # ====================================================
+
         info = customer_table()
-        ws.cell(row=1, column=1, value="EATON MDC SOLUTION CONFIGURATOR")
-        ws.cell(row=2, column=1, value="Customer & Configuration Details")
+
+        ws.cell(
+            row=1,
+            column=1,
+            value="EATON MDC SOLUTION CONFIGURATOR"
+        )
+
+        ws.cell(
+            row=2,
+            column=1,
+            value="Customer & Configuration Details"
+        )
 
         row_no = 4
+
         for _, r in info.iterrows():
-            ws.cell(row=row_no, column=1, value=r["Field"])
-            ws.cell(row=row_no, column=2, value=r["Value"])
+
+            ws.cell(
+                row=row_no,
+                column=1,
+                value=r["Field"]
+            )
+
+            ws.cell(
+                row=row_no,
+                column=2,
+                value=r["Value"]
+            )
+
             row_no += 1
 
+        # ====================================================
+        # FINAL BOQ
+        # ====================================================
+
         row_no += 1
-        ws.cell(row=row_no, column=1, value="FINAL BOQ")
+
+        ws.cell(
+            row=row_no,
+            column=1,
+            value="FINAL BOQ"
+        )
+
         row_no += 1
+
+        # ----------------------------------------------------
+        # HEADERS
+        # Component Type intentionally removed
+        # ----------------------------------------------------
 
         if internal:
+
             headers = [
-                "S.No.", "Part Code", "Description",
-                "Quantity", "UOM", "Unit Cost", "Total Cost",
-                "Unit Price", "Total Price"
-            ]
-        else:
-            headers = [
-                "S.No.", "Part Code", "Description",
-                "Quantity", "UOM", "Unit Price", "Total Price"
+                "S.No.",
+                "Part Code",
+                "Description",
+                "Quantity",
+                "UOM",
+                "Unit Cost",
+                "Total Cost",
+                "Unit Price",
+                "Total Price",
             ]
 
-        for col_no, header in enumerate(headers, 1):
-            ws.cell(row=row_no, column=col_no, value=header)
+        else:
+
+            headers = [
+                "S.No.",
+                "Part Code",
+                "Description",
+                "Quantity",
+                "UOM",
+                "Unit Price",
+                "Total Price",
+            ]
 
         header_row = row_no
+
+        for col_no, header in enumerate(
+            headers,
+            start=1
+        ):
+
+            ws.cell(
+                row=header_row,
+                column=col_no,
+                value=header
+            )
+
         row_no += 1
+
+        # ====================================================
+        # BOQ ROWS
+        # ====================================================
 
         for _, r in bom.iterrows():
-            values = []
+
             if internal:
+
                 values = [
-                    r.get("S.No."),  r.get("Part Code"),
-                    r.get("Description"), r.get("Quantity"), r.get("UOM"),
-                    r.get("Unit Cost"), r.get("Total Cost"),
-                    r.get("Unit Price"), r.get("Total Price")
-                ]
-            else:
-                values = [
-                    r.get("S.No."),  r.get("Part Code"),
-                    r.get("Description"), r.get("Quantity"), r.get("UOM"),
-                    r.get("Unit Price"), r.get("Total Price")
+                    r.get("S.No."),
+                    r.get("Part Code"),
+                    r.get("Description"),
+                    r.get("Quantity"),
+                    r.get("UOM"),
+                    r.get("Unit Cost"),
+                    r.get("Total Cost"),
+                    r.get("Unit Price"),
+                    r.get("Total Price"),
                 ]
 
-            for col_no, value in enumerate(values, 1):
+            else:
+
+                values = [
+                    r.get("S.No."),
+                    r.get("Part Code"),
+                    r.get("Description"),
+                    r.get("Quantity"),
+                    r.get("UOM"),
+                    r.get("Unit Price"),
+                    r.get("Total Price"),
+                ]
+
+            for col_no, value in enumerate(
+                values,
+                start=1
+            ):
+
                 if pd.isna(value):
                     value = None
-                ws.cell(row=row_no, column=col_no, value=value)
+
+                ws.cell(
+                    row=row_no,
+                    column=col_no,
+                    value=value
+                )
+
             row_no += 1
 
-        # ---------------- PRICE SUMMARY ON SAME SHEET ----------------
-        row_no += 1
-        ws.cell(row=row_no, column=1, value="PRICE SUMMARY")
+        # ====================================================
+        # PRICE SUMMARY
+        # ====================================================
+
         row_no += 1
 
+        ws.cell(
+            row=row_no,
+            column=1,
+            value="PRICE SUMMARY"
+        )
+
+        row_no += 1
+
+        summary_start = row_no
+
         if internal:
+
             summary = [
                 ("Base Cost", base_cost),
                 ("Optional Cost", optional_cost),
@@ -1035,75 +1173,408 @@ def excel_bytes(internal=False, bom=None, final_price=0.0, cost_data=None):
                 ("Margin Price", margin_price),
                 ("Freight", freight),
                 ("Installation", installation),
-                ("Warranty %", warranty_pct),
-                ("Warranty Amount", margin_price * warranty_pct / 100),
-                ("Final Selling Price", final_price),
+                (
+                    "Warranty %",
+                    warranty_pct
+                ),
+                (
+                    "Warranty Amount",
+                    margin_price * warranty_pct / 100
+                ),
+                (
+                    "Final Selling Price",
+                    final_price
+                ),
             ]
+
         else:
+
             summary = [
-                ("Final Selling Price", final_price),
+                (
+                    "Final Selling Price",
+                    final_price
+                ),
             ]
 
         for label, value in summary:
-            ws.cell(row=row_no, column=1, value=label)
-            ws.cell(row=row_no, column=2, value=float(value))
+
+            ws.cell(
+                row=row_no,
+                column=1,
+                value=label
+            )
+
+            try:
+                numeric_value = float(
+                    numeric(value)
+                )
+            except Exception:
+                numeric_value = 0.0
+
+            ws.cell(
+                row=row_no,
+                column=2,
+                value=numeric_value
+            )
+
             row_no += 1
 
-        # ---------------- EXCEL FORMATTING ----------------
+        # ====================================================
+        # EXCEL FORMATTING
+        # ====================================================
+
+        from openpyxl.styles import (
+            PatternFill,
+            Font,
+            Alignment,
+            Border,
+            Side
+        )
+
+        from openpyxl.utils import get_column_letter
+
         title_fill = "003B71"
         section_fill = "005EB8"
         header_fill = "D9EAF7"
 
-        ws.merge_cells(start_row=1, start_column=1, end_row=1, end_column=len(headers))
-        ws.merge_cells(start_row=2, start_column=1, end_row=2, end_column=len(headers))
+        # ----------------------------------------------------
+        # TITLE
+        # ----------------------------------------------------
+
+        ws.merge_cells(
+            start_row=1,
+            start_column=1,
+            end_row=1,
+            end_column=len(headers)
+        )
+
+        ws.merge_cells(
+            start_row=2,
+            start_column=1,
+            end_row=2,
+            end_column=len(headers)
+        )
 
         for cell in ws[1]:
-            cell.fill = __import__("openpyxl").styles.PatternFill("solid", fgColor=title_fill)
-            cell.font = __import__("openpyxl").styles.Font(color="FFFFFF", bold=True, size=16)
+
+            cell.fill = PatternFill(
+                "solid",
+                fgColor=title_fill
+            )
+
+            cell.font = Font(
+                color="FFFFFF",
+                bold=True,
+                size=16
+            )
+
+            cell.alignment = Alignment(
+                horizontal="center",
+                vertical="center"
+            )
 
         for cell in ws[2]:
-            cell.fill = __import__("openpyxl").styles.PatternFill("solid", fgColor=section_fill)
-            cell.font = __import__("openpyxl").styles.Font(color="FFFFFF", bold=True, size=11)
 
-        for c in range(1, len(headers) + 1):
-            cell = ws.cell(header_row, c)
-            cell.fill = __import__("openpyxl").styles.PatternFill("solid", fgColor=header_fill)
-            cell.font = __import__("openpyxl").styles.Font(bold=True)
-            cell.alignment = __import__("openpyxl").styles.Alignment(horizontal="center", vertical="center")
+            cell.fill = PatternFill(
+                "solid",
+                fgColor=section_fill
+            )
 
-        # Currency formats
-        for row in ws.iter_rows():
-            for cell in row:
-                if isinstance(cell.value, (int, float)) and cell.column in range(7, len(headers) + 1):
-                    cell.number_format = '₹ #,##0.00'
+            cell.font = Font(
+                color="FFFFFF",
+                bold=True,
+                size=11
+            )
 
-        # Summary values are currency except percentage fields.
-        summary_start = header_row + len(bom) + 3
-        for rr in range(summary_start, row_no):
-            label = ws.cell(rr, 1).value
-            if label in ("Margin %", "Warranty %"):
-                ws.cell(rr, 2).number_format = '0.00'
+            cell.alignment = Alignment(
+                horizontal="center",
+                vertical="center"
+            )
+
+        # ----------------------------------------------------
+        # BOQ HEADER
+        # ----------------------------------------------------
+
+        for col_no in range(
+            1,
+            len(headers) + 1
+        ):
+
+            cell = ws.cell(
+                row=header_row,
+                column=col_no
+            )
+
+            cell.fill = PatternFill(
+                "solid",
+                fgColor=header_fill
+            )
+
+            cell.font = Font(
+                bold=True
+            )
+
+            cell.alignment = Alignment(
+                horizontal="center",
+                vertical="center",
+                wrap_text=True
+            )
+
+        # ----------------------------------------------------
+        # BOQ ALIGNMENT
+        # ----------------------------------------------------
+
+        for rr in range(
+            header_row + 1,
+            header_row + len(bom) + 1
+        ):
+
+            # S.No.
+            ws.cell(
+                rr,
+                1
+            ).alignment = Alignment(
+                horizontal="center"
+            )
+
+            # Quantity
+            ws.cell(
+                rr,
+                4
+            ).alignment = Alignment(
+                horizontal="center"
+            )
+
+            # UOM
+            ws.cell(
+                rr,
+                5
+            ).alignment = Alignment(
+                horizontal="center"
+            )
+
+            # Prices
+            for cc in range(
+                6,
+                len(headers) + 1
+            ):
+
+                ws.cell(
+                    rr,
+                    cc
+                ).alignment = Alignment(
+                    horizontal="right"
+                )
+
+        # ====================================================
+        # CURRENCY FORMATTING
+        # ====================================================
+
+        # Excel BOQ currency columns
+        if internal:
+
+            currency_columns = [
+                6,  # Unit Cost
+                7,  # Total Cost
+                8,  # Unit Price
+                9,  # Total Price
+            ]
+
+        else:
+
+            currency_columns = [
+                6,  # Unit Price
+                7,  # Total Price
+            ]
+
+        for rr in range(
+            header_row + 1,
+            header_row + len(bom) + 1
+        ):
+
+            for cc in currency_columns:
+
+                ws.cell(
+                    rr,
+                    cc
+                ).number_format = '₹ #,##0.00'
+
+        # ====================================================
+        # SUMMARY FORMATTING
+        # ====================================================
+
+        for rr in range(
+            summary_start,
+            row_no
+        ):
+
+            label = ws.cell(
+                rr,
+                1
+            ).value
+
+            value_cell = ws.cell(
+                rr,
+                2
+            )
+
+            value_cell.alignment = Alignment(
+                horizontal="right"
+            )
+
+            if label in (
+                "Margin %",
+                "Warranty %"
+            ):
+
+                value_cell.number_format = '0.00'
+
             else:
-                ws.cell(rr, 2).number_format = '₹ #,##0.00'
 
-        widths = {
-            1: 10, 2: 23, 3: 22, 4: 65, 5: 12,
-            6: 10, 7: 17, 8: 17, 9: 17, 10: 17
-        }
-        for col, width in widths.items():
-            if col <= len(headers):
-                ws.column_dimensions[__import__("openpyxl").utils.get_column_letter(col)].width = width
+                value_cell.number_format = (
+                    '₹ #,##0.00'
+                )
 
-        ws.freeze_panes = f"A{header_row + 1}"
-        ws.auto_filter.ref = f"A{header_row}:{__import__('openpyxl').utils.get_column_letter(len(headers))}{header_row + len(bom)}"
+        # ----------------------------------------------------
+        # FINAL SELLING PRICE HIGHLIGHT
+        # ----------------------------------------------------
+
+        for rr in range(
+            summary_start,
+            row_no
+        ):
+
+            if ws.cell(
+                rr,
+                1
+            ).value == "Final Selling Price":
+
+                ws.cell(
+                    rr,
+                    1
+                ).font = Font(
+                    bold=True,
+                    color="003B71",
+                    size=12
+                )
+
+                ws.cell(
+                    rr,
+                    2
+                ).font = Font(
+                    bold=True,
+                    color="003B71",
+                    size=12
+                )
+
+                ws.cell(
+                    rr,
+                    2
+                ).number_format = (
+                    '₹ #,##0.00'
+                )
+
+        # ====================================================
+        # COLUMN WIDTHS
+        # ====================================================
+
+        if internal:
+
+            widths = {
+                1: 10,
+                2: 23,
+                3: 65,
+                4: 12,
+                5: 10,
+                6: 17,
+                7: 17,
+                8: 17,
+                9: 17,
+            }
+
+        else:
+
+            widths = {
+                1: 10,
+                2: 23,
+                3: 65,
+                4: 12,
+                5: 10,
+                6: 17,
+                7: 17,
+            }
+
+        for col_no, width in widths.items():
+
+            ws.column_dimensions[
+                get_column_letter(col_no)
+            ].width = width
+
+        # ====================================================
+        # GENERAL SHEET SETTINGS
+        # ====================================================
+
+        ws.freeze_panes = (
+            f"A{header_row + 1}"
+        )
+
+        last_boq_row = (
+            header_row + len(bom)
+        )
+
+        ws.auto_filter.ref = (
+            f"A{header_row}:"
+            f"{get_column_letter(len(headers))}"
+            f"{last_boq_row}"
+        )
+
+        ws.sheet_view.showGridLines = False
+
+        ws.row_dimensions[1].height = 25
+        ws.row_dimensions[2].height = 20
+        ws.row_dimensions[header_row].height = 30
 
     output.seek(0)
+
     return output.getvalue()
 
 
-def pdf_bytes(internal=False, bom=None, final_price=0.0):
-    """Create a single-page/flowing PDF report for Sales or Internal use."""
+# ============================================================
+# PDF EXPORT
+# ============================================================
+
+def pdf_bytes(
+    internal=False,
+    bom=None,
+    final_price=0.0
+):
+    """
+    Create PDF report for Sales or Internal use.
+
+    Component Type is intentionally NOT displayed.
+    Final Selling Price is always displayed.
+    """
+
     output = BytesIO()
+
+    if bom is None:
+        bom = build_bom()
+
+    # --------------------------------------------------------
+    # GET FINAL PRICE SAFELY
+    # --------------------------------------------------------
+
+    try:
+        final_price = float(
+            numeric(final_price)
+        )
+    except Exception:
+        final_price = 0.0
+
+    # --------------------------------------------------------
+    # DOCUMENT
+    # --------------------------------------------------------
+
     doc = SimpleDocTemplate(
         output,
         pagesize=landscape(A4),
@@ -1114,132 +1585,326 @@ def pdf_bytes(internal=False, bom=None, final_price=0.0):
         title="Eaton MDC Solution Configurator",
     )
 
+    # --------------------------------------------------------
+    # STYLES
+    # --------------------------------------------------------
+
     styles = getSampleStyleSheet()
+
     title_style = ParagraphStyle(
-        "MdcTitle", parent=styles["Title"], fontSize=17,
-        leading=20, alignment=TA_CENTER, spaceAfter=4
+        "MdcTitle",
+        parent=styles["Title"],
+        fontSize=17,
+        leading=20,
+        alignment=TA_CENTER,
+        spaceAfter=4,
     )
+
     sub_style = ParagraphStyle(
-        "MdcSub", parent=styles["Normal"], fontSize=9,
-        alignment=TA_CENTER, spaceAfter=8
+        "MdcSub",
+        parent=styles["Normal"],
+        fontSize=9,
+        alignment=TA_CENTER,
+        spaceAfter=8,
     )
+
     small = ParagraphStyle(
-        "MdcSmall", parent=styles["Normal"], fontSize=7,
-        leading=8
+        "MdcSmall",
+        parent=styles["Normal"],
+        fontSize=7,
+        leading=8,
     )
+
+    center_small = ParagraphStyle(
+        "MdcCenter",
+        parent=small,
+        alignment=TA_CENTER,
+    )
+
     right_small = ParagraphStyle(
-        "MdcRight", parent=small, alignment=TA_RIGHT
+        "MdcRight",
+        parent=small,
+        alignment=TA_RIGHT,
     )
 
     story = [
-        Paragraph("EATON MDC SOLUTION CONFIGURATOR", title_style),
-        Paragraph("Modular Data Center Solution Configuration & Pricing", sub_style),
+        Paragraph(
+            "EATON MDC SOLUTION CONFIGURATOR",
+            title_style
+        ),
+        Paragraph(
+            "Modular Data Center Solution Configuration & Pricing",
+            sub_style
+        ),
     ]
 
+    # ========================================================
+    # CUSTOMER DETAILS
+    # ========================================================
+
     info = customer_table()
+
     info_data = []
+
     for _, r in info.iterrows():
+
         info_data.append([
-            Paragraph(f"<b>{clean_text(r['Field'])}</b>", small),
-            Paragraph(clean_text(r["Value"]), small),
+            Paragraph(
+                f"<b>{clean_text(r['Field'])}</b>",
+                small
+            ),
+            Paragraph(
+                clean_text(r["Value"]),
+                small
+            ),
         ])
 
-    info_table = Table(info_data, colWidths=[42 * mm, 90 * mm])
-    info_table.setStyle(TableStyle([
-        ("GRID", (0, 0), (-1, -1), 0.35, colors.grey),
-        ("BACKGROUND", (0, 0), (0, -1), colors.HexColor("#D9EAF7")),
-        ("VALIGN", (0, 0), (-1, -1), "TOP"),
-        ("LEFTPADDING", (0, 0), (-1, -1), 5),
-        ("RIGHTPADDING", (0, 0), (-1, -1), 5),
-        ("TOPPADDING", (0, 0), (-1, -1), 3),
-        ("BOTTOMPADDING", (0, 0), (-1, -1), 3),
-    ]))
-    story += [info_table, Spacer(1, 6 * mm)]
+    info_table = Table(
+        info_data,
+        colWidths=[
+            42 * mm,
+            90 * mm
+        ],
+    )
+
+    info_table.setStyle(
+        TableStyle([
+            (
+                "GRID",
+                (0, 0),
+                (-1, -1),
+                0.35,
+                colors.grey
+            ),
+            (
+                "BACKGROUND",
+                (0, 0),
+                (0, -1),
+                colors.HexColor("#D9EAF7")
+            ),
+            (
+                "VALIGN",
+                (0, 0),
+                (-1, -1),
+                "TOP"
+            ),
+            (
+                "LEFTPADDING",
+                (0, 0),
+                (-1, -1),
+                5
+            ),
+            (
+                "RIGHTPADDING",
+                (0, 0),
+                (-1, -1),
+                5
+            ),
+            (
+                "TOPPADDING",
+                (0, 0),
+                (-1, -1),
+                3
+            ),
+            (
+                "BOTTOMPADDING",
+                (0, 0),
+                (-1, -1),
+                3
+            ),
+        ])
+    )
+
+    story += [
+        info_table,
+        Spacer(1, 6 * mm)
+    ]
+
+    # ========================================================
+    # FINAL BOQ
+    # ========================================================
+
+    story.append(
+        Paragraph(
+            "FINAL BOQ",
+            styles["Heading3"]
+        )
+    )
+
+    # --------------------------------------------------------
+    # PDF HEADERS
+    #
+    # IMPORTANT:
+    # NO "Type" / "Component Type"
+    # --------------------------------------------------------
 
     if internal:
+
         headers = [
-            "S.No.", "Type", "Part Code", "Description", "Qty", "UOM",
-            "Unit Cost", "Total Cost", "Unit Price", "Total Price"
+            "S.No.",
+            "Part Code",
+            "Description",
+            "Qty",
+            "UOM",
+            "Unit Cost",
+            "Total Cost",
+            "Unit Price",
+            "Total Price",
         ]
+
     else:
+
         headers = [
-            "S.No.", "Type", "Part Code", "Description", "Qty", "UOM",
-            "Unit Price", "Total Price"
+            "S.No.",
+            "Part Code",
+            "Description",
+            "Qty",
+            "UOM",
+            "Unit Price",
+            "Total Price",
         ]
 
     table_data = [headers]
+
+    # ========================================================
+    # BOQ DATA
+    # ========================================================
+
     for _, r in bom.iterrows():
-        desc = Paragraph(clean_text(r.get("Description")), small)
-        if internal:
-            vals = [
-                clean_text(r.get("S.No.")),
-                clean_text(r.get("Part Code")), desc,
-                clean_text(r.get("Quantity")), clean_text(r.get("UOM")),
-                money(r.get("Unit Cost")), money(r.get("Total Cost")),
-                money(r.get("Unit Price")), money(r.get("Total Price")),
-            ]
-        else:
-            vals = [
-                clean_text(r.get("S.No.")),
-                clean_text(r.get("Part Code")), desc,
-                clean_text(r.get("Quantity")), clean_text(r.get("UOM")),
-                money(r.get("Unit Price")), money(r.get("Total Price")),
-            ]
-        table_data.append(vals)
 
-    if internal:
-        widths = [12*mm, 28*mm, 27*mm, 85*mm, 12*mm, 12*mm, 25*mm, 27*mm, 25*mm, 27*mm]
-    else:
-        widths = [13*mm, 30*mm, 30*mm, 105*mm, 13*mm, 13*mm, 28*mm, 30*mm]
-
-    boq_table = Table(table_data, colWidths=widths, repeatRows=1)
-    boq_table.setStyle(TableStyle([
-        ("BACKGROUND", (0, 0), (-1, 0), colors.HexColor("#003B71")),
-        ("TEXTCOLOR", (0, 0), (-1, 0), colors.white),
-        ("FONTNAME", (0, 0), (-1, 0), "Helvetica-Bold"),
-        ("FONTSIZE", (0, 0), (-1, -1), 7),
-        ("GRID", (0, 0), (-1, -1), 0.3, colors.grey),
-        ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
-        ("ALIGN", (0, 0), (2, -1), "LEFT"),
-        ("ALIGN", (4, 1), (-1, -1), "RIGHT"),
-        ("LEFTPADDING", (0, 0), (-1, -1), 3),
-        ("RIGHTPADDING", (0, 0), (-1, -1), 3),
-        ("TOPPADDING", (0, 0), (-1, -1), 3),
-        ("BOTTOMPADDING", (0, 0), (-1, -1), 3),
-    ]))
-    story += [Paragraph("FINAL BOQ", styles["Heading3"]), boq_table, Spacer(1, 5 * mm)]
-
-    if internal:
-        summary = [
-            ["Base Cost", money(base_cost), "Optional Cost", money(optional_cost)],
-            ["PDU Cost", money(pdu_cost), "Total Cost", money(total_cost)],
-            ["Margin %", f"{margin_pct:.2f}%", "Margin Price", money(margin_price)],
-            ["Freight", money(freight), "Installation", money(installation)],
-            ["Warranty %", f"{warranty_pct:.2f}%", "Warranty Amount", money(margin_price * warranty_pct / 100)],
-            ["FINAL SELLING PRICE", money(final_price), "", ""],
-        ]
-        summary_table = Table(summary, colWidths=[38*mm, 42*mm, 45*mm, 45*mm])
-    else:
-        summary_table = Table(
-            [["FINAL SELLING PRICE", money(final_price)]],
-            colWidths=[55*mm, 45*mm]
+        desc = Paragraph(
+            clean_text(
+                r.get("Description")
+            ),
+            small
         )
 
-    summary_table.setStyle(TableStyle([
-        ("GRID", (0, 0), (-1, -1), 0.4, colors.grey),
-        ("BACKGROUND", (0, 0), (-1, -1), colors.HexColor("#F4F8FC")),
-        ("FONTNAME", (0, 0), (-1, -1), "Helvetica-Bold"),
-        ("FONTSIZE", (0, 0), (-1, -1), 8),
-        ("ALIGN", (1, 0), (-1, -1), "RIGHT"),
-        ("SPAN", (0, -1), (2, -1)) if internal else ("SPAN", (0, 0), (0, 0)),
-        ("TEXTCOLOR", (0, -1), (-1, -1), colors.HexColor("#003B71")),
-    ]))
-    story += [summary_table]
+        if internal:
 
-    doc.build(story)
-    output.seek(0)
-    return output.getvalue()
+            vals = [
+                Paragraph(
+                    clean_text(r.get("S.No.")),
+                    center_small
+                ),
 
+                Paragraph(
+                    clean_text(r.get("Part Code")),
+                    small
+                ),
+
+                desc,
+
+                Paragraph(
+                    clean_text(r.get("Quantity")),
+                    center_small
+                ),
+
+                Paragraph(
+                    clean_text(r.get("UOM")),
+                    center_small
+                ),
+
+                Paragraph(
+                    money(r.get("Unit Cost")),
+                    right_small
+                ),
+
+                Paragraph(
+                    money(r.get("Total Cost")),
+                    right_small
+                ),
+
+                Paragraph(
+                    money(r.get("Unit Price")),
+                    right_small
+                ),
+
+                Paragraph(
+                    money(r.get("Total Price")),
+                    right_small
+                ),
+            ]
+
+        else:
+
+            vals = [
+                Paragraph(
+                    clean_text(r.get("S.No.")),
+                    center_small
+                ),
+
+                Paragraph(
+                    clean_text(r.get("Part Code")),
+                    small
+                ),
+
+                desc,
+
+                Paragraph(
+                    clean_text(r.get("Quantity")),
+                    center_small
+                ),
+
+                Paragraph(
+                    clean_text(r.get("UOM")),
+                    center_small
+                ),
+
+                Paragraph(
+                    money(r.get("Unit Price")),
+                    right_small
+                ),
+
+                Paragraph(
+                    money(r.get("Total Price")),
+                    right_small
+                ),
+            ]
+
+        table_data.append(vals)
+
+    # ========================================================
+    # PDF COLUMN WIDTHS
+    # ========================================================
+
+    if internal:
+
+        widths = [
+            12 * mm,   # S.No.
+            29 * mm,   # Part Code
+            78 * mm,   # Description
+            12 * mm,   # Qty
+            12 * mm,   # UOM
+            25 * mm,   # Unit Cost
+            27 * mm,   # Total Cost
+            25 * mm,   # Unit Price
+            27 * mm,   # Total Price
+        ]
+
+    else:
+
+        widths = [
+            13 * mm,   # S.No.
+            32 * mm,   # Part Code
+            91 * mm,   # Description
+            13 * mm,   # Qty
+            13 * mm,   # UOM
+            28 * mm,   # Unit Price
+            30 * mm,   # Total Price
+        ]
+
+    # ========================================================
+    # BOQ TABLE
+    # ========================================================
+
+    boq_table = Table(
+        table_data,
+        colWidths=widths,
+        repeatRows=1,
+        hAlign="CENTER",
+    )
+
+    boq_table.setStyle(
 
 # ============================================================
 
@@ -3128,91 +3793,91 @@ if not bom.empty:
 else:
     st.info("Select a configuration with available BOM data before downloading.")
 
-# ============================================================
+# # ============================================================
 
-# 9. SAVE CONFIGURATION
-# ============================================================
+# # 9. SAVE CONFIGURATION
+# # ============================================================
 
-section_header("9. SAVE CONFIGURATION")
+# section_header("9. SAVE CONFIGURATION")
 
-save_col1, save_col2 = st.columns([2, 5])
+# save_col1, save_col2 = st.columns([2, 5])
 
-with save_col1:
-    if st.button(
-        "💾 Save Configuration",
-        use_container_width=True,
-        type="primary",
-    ):
-        current_margin_price = (
-            total_cost / (1 - margin_pct / 100)
-            if margin_pct < 100
-            else 0.0
-        )
+# with save_col1:
+#     if st.button(
+#         "💾 Save Configuration",
+#         use_container_width=True,
+#         type="primary",
+#     ):
+#         current_margin_price = (
+#             total_cost / (1 - margin_pct / 100)
+#             if margin_pct < 100
+#             else 0.0
+#         )
 
-        current_final_price = (
-            current_margin_price + freight + installation
-        )
+#         current_final_price = (
+#             current_margin_price + freight + installation
+#         )
 
-        current_warranty_amount = (
-            current_margin_price * warranty_pct / 100
-        )
+#         current_warranty_amount = (
+#             current_margin_price * warranty_pct / 100
+#         )
 
-        save_configuration(
-            configuration_id=st.session_state.configuration_id,
-            bom=bom_with_price,
-            base_cost=base_cost,
-            optional_cost=optional_cost,
-            pdu_cost=pdu_cost,
-            total_cost=total_cost,
-            margin_pct=margin_pct,
-            freight=freight,
-            installation=installation,
-            warranty_pct=warranty_pct,
-            margin_price=current_margin_price,
-            final_selling_price=current_final_price,
-            warranty_amount=current_warranty_amount,
-        )
+#         save_configuration(
+#             configuration_id=st.session_state.configuration_id,
+#             bom=bom_with_price,
+#             base_cost=base_cost,
+#             optional_cost=optional_cost,
+#             pdu_cost=pdu_cost,
+#             total_cost=total_cost,
+#             margin_pct=margin_pct,
+#             freight=freight,
+#             installation=installation,
+#             warranty_pct=warranty_pct,
+#             margin_price=current_margin_price,
+#             final_selling_price=current_final_price,
+#             warranty_amount=current_warranty_amount,
+#         )
 
-        st.session_state.configuration_saved = True
+#         st.session_state.configuration_saved = True
 
-        st.success(
-            "Configuration saved successfully."
-        )
+#         st.success(
+#             "Configuration saved successfully."
+#         )
 
 
-# ============================================================
-# 10. CONFIGURATION HISTORY
-# INTERNAL USERS ONLY
-# ============================================================
+# # ============================================================
+# # 10. CONFIGURATION HISTORY
+# # INTERNAL USERS ONLY
+# # ============================================================
 
-if is_internal:
-    section_header("10. CONFIGURATION HISTORY")
+# if is_internal:
+#     section_header("10. CONFIGURATION HISTORY")
 
-    conn = sqlite3.connect(TRACKING_DB)
+#     conn = sqlite3.connect(TRACKING_DB)
 
-    history_df = pd.read_sql_query(
-        """
-        SELECT
-            COALESCE(NULLIF(user_code, ''), '—') AS "User Code",
-            customer_name AS "Customer Name",
-            DATE(created_at) AS "Date"
-        FROM configurations
-        ORDER BY id DESC
-        """,
-        conn,
-    )
+#     history_df = pd.read_sql_query(
+#         """
+#         SELECT
+#             COALESCE(NULLIF(user_code, ''), '—') AS "User Code",
+#             customer_name AS "Customer Name",
+#             DATE(created_at) AS "Date"
+#         FROM configurations
+#         ORDER BY id DESC
+#         """,
+#         conn,
+#     )
 
-    conn.close()
+#     conn.close()
 
-    if not history_df.empty:
-        st.dataframe(
-            history_df,
-            use_container_width=True,
-            hide_index=True,
-            height=220,
-        )
-    else:
-        st.info("No saved configurations available yet.")
+#     if not history_df.empty:
+#         st.dataframe(
+#             history_df,
+#             use_container_width=True,
+#             hide_index=True,
+#             height=220,
+#         )
+#     else:
+#         st.info("No saved configurations available yet.")
 
 
 # ============================================================
