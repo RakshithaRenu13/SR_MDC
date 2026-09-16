@@ -4,6 +4,8 @@ from io import BytesIO
 from datetime import datetime
 
 import pandas as pd
+from openpyxl.styles import PatternFill, Font, Alignment, Border, Side
+from openpyxl.utils import get_column_letter
 from reportlab.lib import colors
 from reportlab.lib.enums import TA_CENTER, TA_RIGHT
 from reportlab.lib.pagesizes import A4, landscape
@@ -405,8 +407,10 @@ def load_master():
     for config_name, info in block_info.items():
         block = sheet.iloc[info["start"]:info["end"]]
 
-        # Read the actual solution title from Excel.
-        solution_title = get(block.iloc[0], 0)
+        # Read the actual solution title from the correct Excel column.
+        # Configurations 1/2 are in columns 0-4; Configurations 3/4 are in columns 5-9.
+        title_col = info["part"]
+        solution_title = get(block.iloc[0], title_col)
         if not solution_title:
             solution_title = config_name
 
@@ -1317,16 +1321,6 @@ def excel_bytes(
         # ====================================================
         # EXCEL FORMATTING
         # ====================================================
-
-        from openpyxl.styles import (
-            PatternFill,
-            Font,
-            Alignment,
-            Border,
-            Side
-        )
-
-        from openpyxl.utils import get_column_letter
 
         title_fill = "003B71"
         section_fill = "005EB8"
@@ -3676,61 +3670,47 @@ with main_right:
             for p in camera_parts
         )
 
-        # Camera uses the same compact checkbox style as the other
-        # optional accessories. The Excel-driven component selection
-        # remains unchanged.
-        camera_selection = st.checkbox(
-            "Camera",
-            value=camera_current,
-            key="camera_system_selection",
+        # Camera uses the same compact row layout as the other accessories.
+        # The Excel-driven component selection remains unchanged.
+        cam_col1, cam_col2 = st.columns(
+            [4.5, 1.15],
+            gap="small",
+            vertical_alignment="center"
         )
 
+        with cam_col1:
+            camera_selection = st.checkbox(
+                "Camera",
+                value=camera_current,
+                key="camera_system_selection",
+            )
+
+        with cam_col2:
+            if camera_selection:
+                current_camera_qty = max(
+                    [
+                        int(numeric(st.session_state.accessory_qty.get(p, 0)))
+                        for p in camera_parts
+                        if numeric(st.session_state.accessory_qty.get(p, 0)) > 0
+                    ] + [1]
+                )
+
+                camera_qty = st.number_input(
+                    "Qty",
+                    min_value=1,
+                    max_value=999,
+                    value=int(st.session_state.get("camera_quantity", current_camera_qty)),
+                    step=1,
+                    key="camera_quantity",
+                )
+            else:
+                camera_qty = 0
+
         if camera_selection:
-
-            current_camera_qty = max(
-                [
-                    numeric(
-                        st.session_state.accessory_qty.get(
-                            p,
-                            0
-                        )
-                    )
-                    for p in camera_parts
-                    if pd.notna(
-                        numeric(
-                            st.session_state.accessory_qty.get(
-                                p,
-                                0
-                            )
-                        )
-                    )
-                ] + [1]
-            )
-
-            camera_qty = st.number_input(
-                "Camera Qty",
-                min_value=1,
-                max_value=999,
-                value=int(
-                    st.session_state.get(
-                        "camera_quantity",
-                        current_camera_qty
-                    )
-                ),
-                step=1,
-                key="camera_quantity",
-            )
-
-            add_rows(
-                camera_rows,
-                int(camera_qty)
-            )
-
+            # Apply the selected quantity to the same Excel-driven camera rows.
+            add_rows(camera_rows, int(camera_qty))
         else:
-
-            remove_rows(
-                camera_rows
-            )
+            remove_rows(camera_rows)
 
 
         # ====================================================
