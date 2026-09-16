@@ -103,10 +103,13 @@ def numeric(value):
 
 
 def money(value):
+    """Format a numeric price; keep missing Excel values completely blank."""
     try:
+        if pd.isna(value):
+            return ""
         return f"₹ {float(value):,.2f}"
     except Exception:
-        return "N/A"
+        return ""
 
 
 def internal_password():
@@ -704,7 +707,7 @@ def generate_user_code():
 
     if any("EXTERNAL" in x for x in fire_selected):
         codes.append("F-EXT")
-    elif any("INTERNAL" in x or "IN-RACK" in x for x in fire_selected):
+    elif fire_selected:
         codes.append("F-INT")
 
     # Camera is detected from Excel descriptions, not hardcoded part numbers.
@@ -744,24 +747,33 @@ def generate_user_code():
         if selected:
             codes.append(code)
 
-    # PDU code is obtained from Excel TYPE.
+    # PDU code is obtained separately from Excel TYPE for every
+    # selected PDU component. This avoids one common PDU code being
+    # used for all PDU types/components.
+    pdu_map = {
+        "BASIC": "B-PDU",
+        "METERED": "M-PDU",
+        "SWITCHED": "S-PDU",
+        "MANAGED": "MG-PDU",
+    }
+
+    added_pdu_codes = set()
+
     for part, qty in st.session_state.pdu_qty.items():
         if numeric(qty) <= 0:
             continue
+
         pdu_row = pdus_df[
             pdus_df["Part Code"].astype(str).str.strip() == str(part).strip()
         ]
+
         if not pdu_row.empty:
             pdu_type = clean_text(pdu_row.iloc[0]["Type"]).upper()
-            pdu_map = {
-                "BASIC": "B-PDU",
-                "METERED": "M-PDU",
-                "SWITCHED": "S-PDU",
-                "MANAGED": "MG-PDU",
-            }
-            if pdu_type in pdu_map:
-                codes.append(pdu_map[pdu_type])
-        break
+            pdu_code = pdu_map.get(pdu_type)
+
+            if pdu_code and pdu_code not in added_pdu_codes:
+                codes.append(pdu_code)
+                added_pdu_codes.add(pdu_code)
 
     return "-".join(codes) if codes else "—"
 
@@ -801,7 +813,19 @@ def build_bom():
     # 1. BASE CONFIGURATION
     # Keep the Excel configuration order exactly as supplied.
     # --------------------------------------------------------
+    main_mdc_added = False
+
     for _, r in selected_components().iterrows():
+        part_code = clean_text(r["Part Code"])
+
+        # The main MDC part must appear only once in the Final BOQ.
+        # This also prevents duplicate Config-2/base entries from being
+        # counted twice when the source sheet contains a repeated line.
+        if part_code == "801029209":
+            if main_mdc_added:
+                continue
+            main_mdc_added = True
+
         cost = numeric(r["Unit Cost"])
         qty = numeric(r["Quantity"])
 
@@ -829,11 +853,16 @@ def build_bom():
         if pd.notna(qty) and qty > 0:
             cost = numeric(r["Unit Cost"])
 
+            c13_value = numeric(r["C13"])
+            c19_value = numeric(r["C19"])
+            c13_text = f"{c13_value:g}" if pd.notna(c13_value) else ""
+            c19_text = f"{c19_value:g}" if pd.notna(c19_value) else ""
+
             desc = (
                 f'{clean_text(r["Description"])} | '
                 f'Type: {clean_text(r["Type"])} | '
-                f'C13: {numeric(r["C13"]):g} | '
-                f'C19: {numeric(r["C19"]):g}'
+                f'C13: {c13_text} | '
+                f'C19: {c19_text}'
             )
 
             rows.append({
@@ -1119,6 +1148,51 @@ def excel_bytes(
 
         row_no += 1
 
+        # ----------------------------------------------------
+        # SELECTED CONFIGURATION TITLE FROM EXCEL
+        # ----------------------------------------------------
+        selected_config = selected_config_record()
+        selected_config_title = (
+            clean_text(selected_config.get("Configuration Title", ""))
+            if selected_config is not None
+            else ""
+        )
+
+        if selected_config_title:
+            ws.merge_cells(
+                start_row=row_no,
+                start_column=1,
+                end_row=row_no,
+                end_column=len(headers)
+            )
+            ws.cell(
+                row=row_no,
+                column=1,
+                value=selected_config_title
+            )
+            ws.cell(
+                row=row_no,
+                column=1
+            ).fill = PatternFill(
+                "solid",
+                fgColor="D9EAF7"
+            )
+            ws.cell(
+                row=row_no,
+                column=1
+            ).font = Font(
+                bold=True,
+                color="003B71"
+            )
+            ws.cell(
+                row=row_no,
+                column=1
+            ).alignment = Alignment(
+                horizontal="center",
+                vertical="center"
+            )
+            row_no += 1
+
         # ====================================================
         # BOQ ROWS
         # ====================================================
@@ -1345,9 +1419,11 @@ def excel_bytes(
         # BOQ ALIGNMENT
         # ----------------------------------------------------
 
+        boq_data_start = header_row + (2 if selected_config_title else 1)
+
         for rr in range(
-            header_row + 1,
-            header_row + len(bom) + 1
+            boq_data_start,
+            boq_data_start + len(bom)
         ):
 
             # S.No.
@@ -1408,9 +1484,11 @@ def excel_bytes(
                 7,  # Total Price
             ]
 
+        boq_data_start = header_row + (2 if selected_config_title else 1)
+
         for rr in range(
-            header_row + 1,
-            header_row + len(bom) + 1
+            boq_data_start,
+            boq_data_start + len(bom)
         ):
 
             for cc in currency_columns:
@@ -1539,9 +1617,7 @@ def excel_bytes(
             f"A{header_row + 1}"
         )
 
-        last_boq_row = (
-            header_row + len(bom)
-        )
+        last_boq_row = row_no - 1
 
         ws.auto_filter.ref = (
             f"A{header_row}:"
@@ -1813,6 +1889,28 @@ def pdf_bytes(internal=False, bom=None, final_price=0.0):
 
     table_data = [headers]
 
+    selected_config = selected_config_record()
+    selected_config_title = (
+        clean_text(selected_config.get("Configuration Title", ""))
+        if selected_config is not None
+        else ""
+    )
+
+    if selected_config_title:
+        table_data.append([
+            Paragraph(
+                selected_config_title,
+                ParagraphStyle(
+                    "ConfigTitle",
+                    parent=small,
+                    fontSize=8,
+                    leading=10,
+                    alignment=TA_CENTER,
+                    textColor=colors.HexColor("#003B71"),
+                )
+            )
+        ] + [""] * (len(headers) - 1))
+
     for _, r in bom.iterrows():
 
         description = Paragraph(
@@ -1944,6 +2042,43 @@ def pdf_bytes(internal=False, bom=None, final_price=0.0):
     # ========================================================
 
     boq_style_commands = [
+        # Selected configuration title row
+    ]
+
+    if selected_config_title:
+        boq_style_commands.extend([
+            (
+                "SPAN",
+                (0, 1),
+                (-1, 1)
+            ),
+            (
+                "BACKGROUND",
+                (0, 1),
+                (-1, 1),
+                colors.HexColor("#D9EAF7")
+            ),
+            (
+                "TEXTCOLOR",
+                (0, 1),
+                (-1, 1),
+                colors.HexColor("#003B71")
+            ),
+            (
+                "FONTNAME",
+                (0, 1),
+                (-1, 1),
+                "Helvetica-Bold"
+            ),
+            (
+                "ALIGN",
+                (0, 1),
+                (-1, 1),
+                "CENTER"
+            ),
+        ])
+
+    boq_style_commands.extend([
         # Header
         (
             "BACKGROUND",
@@ -2050,7 +2185,7 @@ def pdf_bytes(internal=False, bom=None, final_price=0.0):
             (-1, -1),
             3
         ),
-    ]
+    ])
 
     boq_table.setStyle(
         TableStyle(
@@ -3552,9 +3687,43 @@ with main_right:
 
         if camera_selection:
 
+            current_camera_qty = max(
+                [
+                    numeric(
+                        st.session_state.accessory_qty.get(
+                            p,
+                            0
+                        )
+                    )
+                    for p in camera_parts
+                    if pd.notna(
+                        numeric(
+                            st.session_state.accessory_qty.get(
+                                p,
+                                0
+                            )
+                        )
+                    )
+                ] + [1]
+            )
+
+            camera_qty = st.number_input(
+                "Camera Qty",
+                min_value=1,
+                max_value=999,
+                value=int(
+                    st.session_state.get(
+                        "camera_quantity",
+                        current_camera_qty
+                    )
+                ),
+                step=1,
+                key="camera_quantity",
+            )
+
             add_rows(
                 camera_rows,
-                1
+                int(camera_qty)
             )
 
         else:
@@ -3749,8 +3918,8 @@ if not bom.empty:
     #   1       = main MDC
     #   1.1...  = configuration components
     #   1.17... = cooling components
-    #   2       = first PDU, 2.1... if more PDU lines exist
-    #   3       = first accessory, 3.1... in selection order
+    #   2.1...  = PDU components
+    #   3.1...  = accessory components in selection order
     # --------------------------------------------------------
 
     selected_config_components = selected_components()
@@ -3795,22 +3964,16 @@ if not bom.empty:
                 new_serial.append(f"1.{mdc_sub_no}")
             continue
 
-        # PDU starts section 2.
+        # PDU starts at 2.1. There is no standalone "2" row.
         if component_type == "PDU":
-            if pdu_sub_no == 0:
-                new_serial.append("2")
-            else:
-                new_serial.append(f"2.{pdu_sub_no}")
             pdu_sub_no += 1
+            new_serial.append(f"2.{pdu_sub_no}")
             continue
 
-        # Accessories start section 3 and follow selection order.
+        # Accessories start at 3.1 and follow selection order.
         if component_type == "Optional Accessory":
-            if accessory_sub_no == 0:
-                new_serial.append("3")
-            else:
-                new_serial.append(f"3.{accessory_sub_no}")
             accessory_sub_no += 1
+            new_serial.append(f"3.{accessory_sub_no}")
             continue
 
         new_serial.append("")
@@ -3872,6 +4035,15 @@ if not bom.empty:
         padding:7px 8px;
     }
 
+    .selected-config-title-row td {
+        background:#D9EAF7;
+        color:#003B71 !important;
+        font-weight:700;
+        font-size:12px;
+        text-align:center !important;
+        padding:7px 8px;
+    }
+
     .serial {
         width:7%;
         text-align:center !important;
@@ -3924,6 +4096,21 @@ if not bom.empty:
         <tbody>
     """
 
+    # Selected configuration title is read directly from the Excel master.
+    selected_config = selected_config_record()
+    selected_config_title = (
+        clean_text(selected_config.get("Configuration Title", ""))
+        if selected_config is not None
+        else ""
+    )
+
+    if selected_config_title:
+        html += f"""
+        <tr class="selected-config-title-row">
+            <td colspan="7">{selected_config_title}</td>
+        </tr>
+        """
+
     cooling_heading_added = False
     accessories_heading_added = False
     pdu_heading_added = False
@@ -3942,13 +4129,8 @@ if not bom.empty:
         unit_price = numeric(row["Unit Price"])
         total_price = numeric(row["Total Price"])
 
-        unit_price_display = (
-            money(unit_price) if pd.notna(unit_price) else "N/A"
-        )
-
-        total_price_display = (
-            money(total_price) if pd.notna(total_price) else "N/A"
-        )
+        unit_price_display = money(unit_price) if pd.notna(unit_price) else ""
+        total_price_display = money(total_price) if pd.notna(total_price) else ""
 
         if (
             serial_no == ""
