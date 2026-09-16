@@ -761,8 +761,10 @@ def generate_user_code():
         "MANAGED": "MG-PDU",
     }
 
-    added_pdu_codes = set()
-
+    # Each PDU model gets its own unique user-code suffix based on
+    # its position within that PDU type in the Excel master.
+    # Example: the 4 Basic PDU models become B-PDU1, B-PDU2,
+    # B-PDU3 and B-PDU4. Metered/Switched/Managed follow the same rule.
     for part, qty in st.session_state.pdu_qty.items():
         if numeric(qty) <= 0:
             continue
@@ -771,13 +773,26 @@ def generate_user_code():
             pdus_df["Part Code"].astype(str).str.strip() == str(part).strip()
         ]
 
-        if not pdu_row.empty:
-            pdu_type = clean_text(pdu_row.iloc[0]["Type"]).upper()
-            pdu_code = pdu_map.get(pdu_type)
+        if pdu_row.empty:
+            continue
 
-            if pdu_code and pdu_code not in added_pdu_codes:
-                codes.append(pdu_code)
-                added_pdu_codes.add(pdu_code)
+        pdu_type = clean_text(pdu_row.iloc[0]["Type"]).upper()
+        pdu_prefix = pdu_map.get(pdu_type)
+
+        if not pdu_prefix:
+            continue
+
+        # Preserve Excel order so each model has a stable unique number.
+        same_type = pdus_df[
+            pdus_df["Type"].astype(str).str.strip().str.upper() == pdu_type
+        ].reset_index(drop=True)
+
+        matches = same_type.index[
+            same_type["Part Code"].astype(str).str.strip() == str(part).strip()
+        ].tolist()
+
+        pdu_number = (matches[0] + 1) if matches else 1
+        codes.append(f"{pdu_prefix}{pdu_number}")
 
     return "-".join(codes) if codes else "—"
 
@@ -785,6 +800,49 @@ def generate_user_code():
 def handle_excel_download():
     st.session_state.user_code = generate_user_code()
     st.session_state.user_count = increment_download_count()
+
+
+def render_user_info_panel(container):
+    """Render the compact user information panel at its original location."""
+    current_date = datetime.now().strftime("%d-%m-%Y")
+    container.html(f"""
+    <div style="
+        background:#F7FBFF;
+        border:1px solid #C9DFF2;
+        border-radius:6px;
+        padding:8px 14px;
+        height:48px;
+        display:flex;
+        align-items:center;
+    ">
+        <div style="
+            display:flex;
+            width:100%;
+            justify-content:space-between;
+            align-items:center;
+            text-align:center;
+        ">
+            <div style="flex:1;">
+                <span style="font-size:9px;color:#64748B;font-weight:700;">USER CODE</span><br>
+                <span style="font-size:13px;font-weight:700;color:#003B71;">
+                    {st.session_state.user_code}
+                </span>
+            </div>
+            <div style="flex:1;">
+                <span style="font-size:9px;color:#64748B;font-weight:700;">USER COUNT</span><br>
+                <span style="font-size:13px;font-weight:700;color:#003B71;">
+                    {st.session_state.user_count}
+                </span>
+            </div>
+            <div style="flex:1;">
+                <span style="font-size:9px;color:#64748B;font-weight:700;">DATE</span><br>
+                <span style="font-size:13px;font-weight:700;color:#003B71;">
+                    {current_date}
+                </span>
+            </div>
+        </div>
+    </div>
+    """)
 
 
 # ============================================================
@@ -2724,69 +2782,10 @@ st.session_state.customer_name = customer_name.strip()
 # USER CODE / COUNT / DATE
 # ------------------------------------------------------------
 with top_info_col:
+    # The placeholder is rendered after all selection widgets are processed,
+    # so USER CODE reflects the current UI selection immediately.
+    user_info_placeholder = st.empty()
 
-    current_date = datetime.now().strftime("%d-%m-%Y")
-
-    st.html(f"""
-    <div style="
-        background:#F7FBFF;
-        border:1px solid #C9DFF2;
-        border-radius:6px;
-        padding:8px 14px;
-        height:48px;
-        display:flex;
-        align-items:center;
-    ">
-        <div style="
-            display:flex;
-            width:100%;
-            justify-content:space-between;
-            align-items:center;
-            text-align:center;
-        ">
-
-            <div style="flex:1;">
-                <span style="
-                    font-size:9px;
-                    color:#64748B;
-                    font-weight:700;
-                ">USER CODE</span><br>
-                <span style="
-                    font-size:13px;
-                    font-weight:700;
-                    color:#003B71;
-                ">{st.session_state.user_code}</span>
-            </div>
-
-            <div style="flex:1;">
-                <span style="
-                    font-size:9px;
-                    color:#64748B;
-                    font-weight:700;
-                ">USER COUNT</span><br>
-                <span style="
-                    font-size:13px;
-                    font-weight:700;
-                    color:#003B71;
-                ">{st.session_state.user_count}</span>
-            </div>
-
-            <div style="flex:1;">
-                <span style="
-                    font-size:9px;
-                    color:#64748B;
-                    font-weight:700;
-                ">DATE</span><br>
-                <span style="
-                    font-size:13px;
-                    font-weight:700;
-                    color:#003B71;
-                ">{current_date}</span>
-            </div>
-
-        </div>
-    </div>
-    """)
 
 # ============================================================
 # SIDEBAR ACCESS
@@ -3830,6 +3829,14 @@ with main_right:
                             part,
                             None
                         )
+# ============================================================
+# LIVE USER CODE UPDATE
+# ============================================================
+# Generate the code after all current UI selections have been processed.
+# The placeholder above keeps the panel in the same compact top position.
+st.session_state.user_code = generate_user_code()
+render_user_info_panel(user_info_placeholder)
+
 # ============================================================
 # 5. FINAL BOQ
 
