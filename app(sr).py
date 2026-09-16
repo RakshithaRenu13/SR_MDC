@@ -1053,15 +1053,11 @@ def add_selling_prices(bom, total_cost, margin_pct, freight, installation):
 # ============================================================
 
 def customer_table():
+    # Export only the customer name.
+    # Other customer details/problem/solution fields remain available in the UI
+    # but are intentionally not included in Excel or PDF output.
     return pd.DataFrame([
         ["Customer Name", st.session_state.customer_name],
-        ["Customer Place", st.session_state.customer_place],
-        ["Problem Description", st.session_state.problem],
-        ["Solution", st.session_state.solution],
-        ["MDC Type", st.session_state.mdc_type],
-        ["Configuration", st.session_state.configuration],
-        ["User Code", st.session_state.user_code],
-        ["Date", datetime.now().strftime("%d-%m-%Y")],
     ], columns=["Field", "Value"])
 
 
