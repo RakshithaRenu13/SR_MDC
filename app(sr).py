@@ -154,8 +154,53 @@ DEMO_INTERNAL_PASSWORD = "MDC@123"
 # ============================================================
 
 def clean_text(value):
-    if pd.isna(value):
+    """
+    Safely convert Excel/Pandas values to clean text.
+    Handles scalar values, Series, lists and NaN values.
+    """
+
+    # Pandas Series
+    if isinstance(value, pd.Series):
+        if value.empty:
+            return ""
+
+        # Take the first non-empty value
+        for item in value.tolist():
+            if isinstance(item, (pd.Series, list, tuple)):
+                continue
+
+            if pd.notna(item):
+                text = str(item).strip()
+
+                if text and text.lower() != "nan":
+                    return text
+
         return ""
+
+    # Lists / tuples
+    if isinstance(value, (list, tuple)):
+        for item in value:
+            if pd.notna(item):
+                text = str(item).strip()
+
+                if text and text.lower() != "nan":
+                    return text
+
+        return ""
+
+    # Normal scalar value
+    try:
+        if pd.isna(value):
+            return ""
+    except (TypeError, ValueError):
+        pass
+
+    text = str(value).strip()
+
+    if text.lower() in {"nan", "none", "nat"}:
+        return ""
+
+    return text
 
     return str(value).strip()
 
@@ -479,9 +524,8 @@ def load_master():
                 row.get(code_col, "")
             )
 
-            description = clean_text(
-                row.get(desc_col, "")
-            )
+            raw_description = row.get(desc_col, "")
+            description = clean_text(raw_description)
 
             quantity = numeric(
                 row.get(qty_col, 0)
