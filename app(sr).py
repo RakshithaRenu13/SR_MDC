@@ -190,6 +190,24 @@ def init_tracking_db():
         INSERT OR IGNORE INTO download_counter (id, download_count)
         VALUES (1, 0)
     """)
+
+    # ========================================================
+    # USER SESSION COUNTER
+    # Counts a new Streamlit app session only once.
+    # This is intentionally separate from download_counter.
+    # ========================================================
+    cur.execute("""
+        CREATE TABLE IF NOT EXISTS session_counter (
+            id INTEGER PRIMARY KEY,
+            user_count INTEGER NOT NULL DEFAULT 0
+        )
+    """)
+
+    cur.execute("""
+        INSERT OR IGNORE INTO session_counter (id, user_count)
+        VALUES (1, 0)
+    """)
+
     # ========================================================
     # USER DOWNLOAD HISTORY
     # ========================================================
@@ -219,6 +237,28 @@ def increment_download_count():
     count = cur.execute("""
         SELECT download_count
         FROM download_counter
+        WHERE id = 1
+    """).fetchone()[0]
+
+    conn.commit()
+    conn.close()
+    return count
+
+
+def increment_user_count():
+    """Increment the persistent count for a new Streamlit user session."""
+    conn = sqlite3.connect(TRACKING_DB)
+    cur = conn.cursor()
+
+    cur.execute("""
+        UPDATE session_counter
+        SET user_count = user_count + 1
+        WHERE id = 1
+    """)
+
+    count = cur.execute("""
+        SELECT user_count
+        FROM session_counter
         WHERE id = 1
     """).fetchone()[0]
 
@@ -639,6 +679,7 @@ defaults = {
     "configuration_saved": False,
     "user_code": "—",
     "user_count": 0,
+    "session_counted": False,
 }
 
 for key, value in defaults.items():
@@ -648,13 +689,18 @@ for key, value in defaults.items():
 if st.session_state.configuration_id is None:
     st.session_state.configuration_id = generate_configuration_id()
 
-if st.session_state.user_count == 0:
-    conn = sqlite3.connect(TRACKING_DB)
-    count = conn.execute("""
-        SELECT download_count FROM download_counter WHERE id = 1
-    """).fetchone()
-    st.session_state.user_count = count[0] if count else 0
-    conn.close()
+# ============================================================
+# NEW USER SESSION COUNT
+# Count this Streamlit session exactly once.
+#
+# Flow:
+#   New session  -> User Count +1
+#   Same session -> Nothing
+#   Download     -> User Count unchanged
+# ============================================================
+if not st.session_state.session_counted:
+    st.session_state.user_count = increment_user_count()
+    st.session_state.session_counted = True
 
 
 # ============================================================
@@ -809,13 +855,18 @@ def generate_user_code():
 
 
 def handle_excel_download():
-    # Generate a new user code for this download
+    """
+    Download callback.
+
+    IMPORTANT:
+    - User Count is NOT incremented here.
+    - User Count belongs to the Streamlit session lifecycle.
+    - Every Excel/PDF download creates one Configuration History entry.
+    """
+    # Generate the current user/configuration code for this download.
     st.session_state.user_code = generate_user_code()
 
-    # Increment download/user count
-    st.session_state.user_count = increment_download_count()
-
-    # Save user history
+    # Save this download to Configuration/User History.
     conn = sqlite3.connect(TRACKING_DB)
 
     conn.execute(
@@ -4426,7 +4477,7 @@ else:
 
 if is_internal:
 
-    section_header("10. USER HISTORY")
+    section_header("10. CONFIGURATION HISTORY")
 
     conn = sqlite3.connect(TRACKING_DB)
 
