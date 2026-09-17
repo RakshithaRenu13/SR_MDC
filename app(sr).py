@@ -190,6 +190,17 @@ def init_tracking_db():
         INSERT OR IGNORE INTO download_counter (id, download_count)
         VALUES (1, 0)
     """)
+    # ========================================================
+    # USER DOWNLOAD HISTORY
+    # ========================================================
+    cur.execute("""
+        CREATE TABLE IF NOT EXISTS user_history (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            user_code TEXT,
+            customer_name TEXT,
+            created_at TEXT
+        )
+    """)
 
     conn.commit()
     conn.close()
@@ -798,8 +809,33 @@ def generate_user_code():
 
 
 def handle_excel_download():
+    # Generate a new user code for this download
     st.session_state.user_code = generate_user_code()
+
+    # Increment download/user count
     st.session_state.user_count = increment_download_count()
+
+    # Save user history
+    conn = sqlite3.connect(TRACKING_DB)
+
+    conn.execute(
+        """
+        INSERT INTO user_history (
+            user_code,
+            customer_name,
+            created_at
+        )
+        VALUES (?, ?, ?)
+        """,
+        (
+            st.session_state.user_code,
+            st.session_state.customer_name,
+            datetime.now().isoformat(),
+        ),
+    )
+
+    conn.commit()
+    conn.close()
 
 
 def render_user_info_panel(container):
@@ -4381,6 +4417,44 @@ if not bom.empty:
         )
 else:
     st.info("Select a configuration with available BOM data before downloading.")
+
+
+# ============================================================
+# 10. USER HISTORY
+# INTERNAL USERS ONLY
+# ============================================================
+
+if is_internal:
+
+    section_header("10. USER HISTORY")
+
+    conn = sqlite3.connect(TRACKING_DB)
+
+    history_df = pd.read_sql_query(
+        """
+        SELECT
+            user_code AS "User Code",
+            customer_name AS "Customer Name"
+        FROM user_history
+        ORDER BY id DESC
+        """,
+        conn,
+    )
+
+    conn.close()
+
+    if not history_df.empty:
+
+        st.dataframe(
+            history_df,
+            use_container_width=True,
+            hide_index=True,
+            height=220,
+        )
+
+    else:
+
+        st.info("No user history available yet.")
 
 # # ============================================================
 
